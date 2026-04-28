@@ -1,0 +1,36 @@
+{
+  "name": "registry-web",
+  "version": "1.0.0",
+  "description": "The web interface for the Vix registry.",
+  "main": "vite.config.js",
+  "scripts": {
+    "registry:build": "node tools/build_registry_index.mjs",
+    "dev": "npm run registry:build && vite",
+    "build": "npm run registry:build && vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && node scripts/deploy.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vixcpp/registry-web.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/vixcpp/registry-web/issues"
+  },
+  "homepage": "https://github.com/vixcpp/registry-web#readme",
+  "dependencies": {
+    "dompurify": "^3.4.1",
+    "marked": "^18.0.2",
+    "shiki": "^4.0.2",
+    "vue": "^3.5.33",
+    "vue-router": "^5.0.6"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.6",
+    "vite": "^8.0.10"
+  }
+}
