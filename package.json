@@ -2,11 +2,12 @@
   "name": "registry-web",
   "version": "1.0.0",
   "description": "The web interface for the Vix registry.",
-  "main": "vite.config.js",
+  "main": "vite.config.mjs",
   "scripts": {
     "registry:build": "node tools/build_registry_index.mjs",
     "dev": "npm run registry:build && vite",
     "build": "npm run registry:build && vite build",
+    "vercel:build": "VIX_REGISTRY_SOURCE=remote npm run registry:build && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/deploy.mjs"
   },
