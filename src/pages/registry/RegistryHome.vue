@@ -1,1135 +1,377 @@
-<template>
-  <div class="rh">
-
-    <!-- Animated background -->
-    <div class="rh-bg" aria-hidden="true">
-      <RegistryNetBg />
-    </div>
-
-    <!-- Top nav -->
-    <header class="rh-header">
-      <div class="rh-header-inner">
-        <!-- Logo -->
-        <RouterLink class="rh-brand" to="/" aria-label="Vix Registry home">
-          <svg class="rh-brand-mark" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <defs>
-              <linearGradient id="rhg-left" x1="5" y1="6" x2="18" y2="30" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#d4fcd4"/>
-                <stop offset="55%" stop-color="#4ade80"/>
-                <stop offset="100%" stop-color="#22c55e"/>
-              </linearGradient>
-              <linearGradient id="rhg-right" x1="31" y1="6" x2="18" y2="30" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#22c55e"/>
-                <stop offset="100%" stop-color="#15803d"/>
-              </linearGradient>
-            </defs>
-            <polygon points="5,6 12,6 18,28 14,28" fill="url(#rhg-left)"/>
-            <polygon points="31,6 24,6 18,28 22,28" fill="url(#rhg-right)"/>
-            <line x1="9" y1="16" x2="13.5" y2="29" stroke="#bbf7d0" stroke-width="1.1" stroke-linecap="round" opacity="0.7"/>
-          </svg>
-          <span class="rh-brand-name">Vix</span><span class="rh-brand-ext"> Registry</span>
-        </RouterLink>
-
-        <!-- Nav links -->
-        <nav class="rh-nav" aria-label="Registry navigation">
-          <RouterLink class="rh-nav-link" to="/browse">Packages</RouterLink>
-          <a class="rh-nav-link" href="https://docs.vixcpp.com" target="_blank" rel="noreferrer">Docs</a>
-          <a class="rh-nav-link" href="https://vixcpp.com" target="_blank" rel="noreferrer">Vix.cpp</a>
-        </nav>
-
-        <!-- Actions -->
-        <div class="rh-header-actions">
-          <RouterLink class="rh-publish-btn" to="/publish">
-            <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v9M4 7l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            Publish
-          </RouterLink>
-        </div>
-
-        <!-- Mobile burger -->
-        <button type="button" class="rh-burger" @click="mobileOpen = !mobileOpen" aria-label="Toggle menu">
-          <span></span><span></span><span></span>
-        </button>
-      </div>
-
-      <!-- Mobile menu -->
-      <div v-if="mobileOpen" class="rh-mobile-menu">
-        <RouterLink class="rh-mobile-link" to="/browse" @click="mobileOpen = false">Packages</RouterLink>
-        <a class="rh-mobile-link" href="https://docs.vixcpp.com" target="_blank" rel="noreferrer" @click="mobileOpen = false">Docs</a>
-        <a class="rh-mobile-link" href="https://vixcpp.com" target="_blank" rel="noreferrer" @click="mobileOpen = false">Vix.cpp</a>
-        <RouterLink class="rh-mobile-link rh-mobile-publish" to="/publish" @click="mobileOpen = false">Publish a package</RouterLink>
-      </div>
-    </header>
-
-    <!-- Hero -->
-    <main class="rh-hero">
-      <div class="rh-hero-inner">
-
-        <!-- Badge -->
-        <div class="rh-badge">
-          <span class="rh-badge-dot"></span>
-          Open source · Offline-first · MIT
-        </div>
-
-        <!-- Title -->
-        <h1 class="rh-title">
-          The C++ package registry<br>
-          <span class="rh-title-accent">built for Vix.cpp</span>
-        </h1>
-
-        <!-- Subtitle -->
-        <p class="rh-subtitle">
-          Discover, install, and publish C++ packages for the Vix runtime.<br class="rh-br">
-          Works fully offline after sync. No friction.
-        </p>
-
-        <!-- Search -->
-        <form class="rh-search-wrap" @submit.prevent="goSearch" role="search">
-          <div class="rh-search">
-            <svg class="rh-search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.6"/>
-              <path d="M13.5 13.5L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-            <input
-              v-model.trim="q"
-              ref="searchInput"
-              class="rh-search-input"
-              type="search"
-              placeholder="Search packages…"
-              autocomplete="off"
-              autocorrect="off"
-              spellcheck="false"
-              @keydown.esc="q = ''"
-            />
-            <kbd class="rh-search-kbd" aria-hidden="true">⌘K</kbd>
-          </div>
-          <button type="submit" class="rh-search-btn" :disabled="!q">
-            Search
-          </button>
-        </form>
-
-        <!-- Quick links -->
-        <div class="rh-quick">
-          <span class="rh-quick-label">Popular:</span>
-          <button
-            v-for="tag in popularTags"
-            :key="tag"
-            type="button"
-            class="rh-quick-tag"
-            @click="quickSearch(tag)"
-          >{{ tag }}</button>
-        </div>
-
-        <!-- Stats -->
-        <div class="rh-stats">
-          <div class="rh-stat">
-            <span class="rh-stat-val">{{ stats.packages }}</span>
-            <span class="rh-stat-label">Packages</span>
-          </div>
-          <div class="rh-stat-sep" aria-hidden="true"></div>
-          <div class="rh-stat">
-            <span class="rh-stat-val">{{ stats.publishers }}</span>
-            <span class="rh-stat-label">Publishers</span>
-          </div>
-          <div class="rh-stat-sep" aria-hidden="true"></div>
-          <div class="rh-stat">
-            <span class="rh-stat-val">MIT</span>
-            <span class="rh-stat-label">Licensed</span>
-          </div>
-          <div class="rh-stat-sep" aria-hidden="true"></div>
-          <div class="rh-stat">
-            <span class="rh-stat-val">Offline</span>
-            <span class="rh-stat-label">First</span>
-          </div>
-        </div>
-
-      </div>
-    </main>
-
-    <!-- Features strip -->
-    <section class="rh-features" aria-label="Key features">
-      <div class="rh-features-inner">
-        <div class="rh-feature">
-          <div class="rh-feature-icon">
-            <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M7 10l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div class="rh-feature-body">
-            <div class="rh-feature-title">One command install</div>
-            <div class="rh-feature-desc">vix add @scope/pkg · vix install</div>
-          </div>
-        </div>
-
-        <div class="rh-feature-divider" aria-hidden="true"></div>
-
-        <div class="rh-feature">
-          <div class="rh-feature-icon">
-            <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M10 4v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="2" y="2" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.5"/></svg>
-          </div>
-          <div class="rh-feature-body">
-            <div class="rh-feature-title">Reproducible builds</div>
-            <div class="rh-feature-desc">vix.lock pins exact versions</div>
-          </div>
-        </div>
-
-        <div class="rh-feature-divider" aria-hidden="true"></div>
-
-        <div class="rh-feature">
-          <div class="rh-feature-icon">
-            <svg viewBox="0 0 20 20" fill="none"><path d="M3 10c0-3.86 3.14-7 7-7s7 3.14 7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10 17a7 7 0 0 1-7-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 2"/><circle cx="10" cy="10" r="2" fill="currentColor"/></svg>
-          </div>
-          <div class="rh-feature-body">
-            <div class="rh-feature-title">Works offline</div>
-            <div class="rh-feature-desc">Sync once, build anywhere</div>
-          </div>
-        </div>
-
-        <div class="rh-feature-divider" aria-hidden="true"></div>
-
-        <div class="rh-feature">
-          <div class="rh-feature-icon">
-            <svg viewBox="0 0 20 20" fill="none"><path d="M10 2L2 7l8 5 8-5-8-5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2 13l8 5 8-5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-          </div>
-          <div class="rh-feature-body">
-            <div class="rh-feature-title">Scoped namespaces</div>
-            <div class="rh-feature-desc">@scope/package like npm</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-   <!-- How it works -->
-<section class="rh-how">
-  <div class="rh-how-inner">
-    <h2 class="rh-how-title">Install a framework in one command</h2>
-    <p class="rh-how-sub">
-      Search a package, install it globally, then use it in a Vix project.
-    </p>
-
-    <div class="rh-how-steps">
-      <div class="rh-how-step">
-        <div class="rh-how-step-n">1</div>
-        <div class="rh-how-step-body">
-          <div class="rh-how-step-title">Find the package</div>
-          <div class="rh-how-code code-card">
-            <div class="code-head">
-              <div class="head-left">
-                <span class="dot dot-red"></span>
-                <span class="dot dot-yellow"></span>
-                <span class="dot dot-green"></span>
-              </div>
-            </div>
-            <div class="code-body rh-code-body">
-              <pre class="code-pre rh-code-pre"><code><span class="shell-path">~$</span> <span class="shell-cmd">vix search</span> <span class="shell-flag">cnerium/app</span>
-  <span class="shell-cmd">cnerium/app</span> <span class="shell-path">(latest: 0.5.0)</span>
-  the fast, minimalist web framework for Vix.
-
-<span class="shell-success">✔</span> Showing 1-1 of 1 result(s).</code></pre>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="rh-how-connector" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-
-      <div class="rh-how-step">
-        <div class="rh-how-step-n">2</div>
-        <div class="rh-how-step-body">
-          <div class="rh-how-step-title">Install the framework</div>
-          <div class="rh-how-code code-card">
-            <div class="code-head">
-              <div class="head-left">
-                <span class="dot dot-red"></span>
-                <span class="dot dot-yellow"></span>
-                <span class="dot dot-green"></span>
-              </div>
-            </div>
-            <div class="code-body rh-code-body">
-              <pre class="code-pre rh-code-pre"><code><span class="shell-path">~$</span> <span class="shell-cmd">vix install</span> <span class="shell-flag">-g</span> <span class="shell-path">cnerium/app</span>
-<span class="shell-success">✔</span> Installed cnerium/app@0.5.0
-<span class="shell-success">✔</span> Ready to use in Vix projects</code></pre>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="rh-how-connector" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-
-      <div class="rh-how-step">
-        <div class="rh-how-step-n">3</div>
-        <div class="rh-how-step-body">
-          <div class="rh-how-step-title">Build an app</div>
-          <div class="rh-how-code code-card">
-            <div class="code-head">
-              <div class="head-left">
-                <span class="dot dot-red"></span>
-                <span class="dot dot-yellow"></span>
-                <span class="dot dot-green"></span>
-                <span class="head-title"> main.cpp</span>
-              </div>
-            </div>
-            <div class="code-body rh-code-body">
-              <pre class="code-pre rh-code-pre"><code><span class="cpp-directive">#include</span> <span class="cpp-include">&lt;cnerium/app/app.hpp&gt;</span>
-<span class="cpp-keyword">using namespace</span> cnerium::app;
-<span class="cpp-keyword">int</span> <span class="cpp-fn">main</span>()
-{
-  App app;
-  app.get(<span class="cpp-string">"/"</span>, [](AppContext &ctx) {
-    ctx.text(<span class="cpp-string">"Hello from Cnerium"</span>);
-  });
-  app.listen(<span class="cpp-string">"127.0.0.1"</span>, <span class="cpp-type">8080</span>);
-}</code></pre>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="rh-how-ctas">
-      <RouterLink class="rh-cta-primary" to="/browse">Browse packages</RouterLink>
-      <a class="rh-cta-secondary" href="https://docs.vixcpp.com" target="_blank" rel="noreferrer">Read the docs</a>
-    </div>
-  </div>
-</section>
-
-    <!-- Publish CTA -->
-    <section class="rh-publish-cta">
-      <div class="rh-publish-cta-inner">
-        <div class="rh-publish-cta-left">
-          <h2 class="rh-publish-cta-title">Share your C++ code with the world</h2>
-          <p class="rh-publish-cta-desc">
-            Publish a package in minutes. Tag a release on GitHub, run vix publish, and your package is live.
-          </p>
-        </div>
-        <RouterLink class="rh-cta-primary" to="/publish">
-          Publish a package
-        </RouterLink>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="rh-footer">
-      <div class="rh-footer-inner">
-        <span class="rh-footer-copy">Vix Registry · MIT licensed · Part of <a href="https://vixcpp.com" target="_blank" rel="noreferrer">Vix.cpp</a></span>
-        <div class="rh-footer-links">
-          <a href="https://github.com/vixcpp/vix" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://docs.vixcpp.com" target="_blank" rel="noreferrer">Docs</a>
-          <RouterLink to="/browse">Browse</RouterLink>
-        </div>
-      </div>
-    </footer>
-
-  </div>
-</template>
-
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import RegistryNetBg from "@/components/RegistryNetBg.vue";
+import RegistryPackageCard from "@/components/RegistryPackageCard.vue";
+import RegistrySiteHeader from "@/components/RegistrySiteHeader.vue";
+import { loadRegistryIndex } from "@/lib/loadRegistryIndex";
 import { useBodyClass } from "@/lib/useBodyClass";
 
 useBodyClass("is-registry");
 
 const router = useRouter();
-const q = ref("");
+const query = ref("");
 const searchInput = ref(null);
-const mobileOpen = ref(false);
+const loading = ref(true);
+const error = ref("");
+const packages = ref([]);
+const generatedAt = ref("");
+const githubByRepo = ref({});
 
-const popularTags = ["pdf", "json", "http", "websocket", "crypto", "sqlite"];
+const GH_API_BASE = (import.meta.env.VITE_GITHUB_API_BASE || "https://api.github.com").toString().replace(/\/+$/, "");
+const FEATURED_LIMIT = 4;
+const LIST_LIMIT = 4;
 
-const stats = ref({
-  packages: "135",
-  publishers: "6",
+function parseTime(value) {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function latestVersion(entry) {
+  if (entry.latestVersion) return entry.latestVersion;
+  const versions = Object.keys(entry.versions || {});
+  return versions.at(-1) || "";
+}
+
+function versionDates(entry) {
+  return Object.values(entry.versions || {})
+    .map((version) => version?.publishedAt)
+    .filter(Boolean);
+}
+
+function normalizePackage(entry) {
+  const dates = versionDates(entry);
+  const activityAt = entry.api?.updatedAt || entry.updatedAt || entry.lastUpdatedAt || dates.at(-1) || "";
+  const createdAt = entry.createdAt || dates[0] || activityAt;
+  const quality = entry.quality || {};
+  const versionsCount = Object.keys(entry.versions || {}).length;
+  const qualityScore = Number(Boolean(quality.hasDocs)) + Number(Boolean(quality.hasExamples)) + Number(Boolean(quality.hasTests));
+
+  return {
+    ...entry,
+    latestVersion: latestVersion(entry),
+    versionsCount,
+    activityAt,
+    createdAt,
+    qualityScore,
+    repoUrl: typeof entry.repo === "string" ? entry.repo : entry.repo?.url || "",
+  };
+}
+
+const packageCount = computed(() => packages.value.length);
+const namespaceCount = computed(() => new Set(packages.value.map((pkg) => pkg.namespace).filter(Boolean)).size);
+
+const featured = computed(() => [...packages.value]
+  .sort((a, b) => b.qualityScore - a.qualityScore || b.versionsCount - a.versionsCount || parseTime(b.activityAt) - parseTime(a.activityAt) || `${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`))
+  .slice(0, FEATURED_LIMIT));
+
+const recentlyUpdated = computed(() => [...packages.value]
+  .filter((pkg) => pkg.activityAt)
+  .sort((a, b) => parseTime(b.activityAt) - parseTime(a.activityAt) || `${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`))
+  .slice(0, LIST_LIMIT));
+
+const newPackages = computed(() => [...packages.value]
+  .filter((pkg) => pkg.versionsCount <= 2)
+  .sort((a, b) => parseTime(b.createdAt) - parseTime(a.createdAt) || a.versionsCount - b.versionsCount || `${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`))
+  .slice(0, LIST_LIMIT));
+
+const indexDate = computed(() => {
+  if (!generatedAt.value) return "";
+  const date = new Date(generatedAt.value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date);
 });
 
-function goSearch() {
-  const s = q.value.trim();
-  if (!s) return;
-  router.push({ path: "/browse", query: { q: s } });
+function submitSearch() {
+  const q = query.value.trim();
+  router.push(q ? { path: "/browse", query: { q } } : { path: "/browse" });
 }
 
-function quickSearch(tag) {
-  q.value = tag;
-  router.push({ path: "/browse", query: { q: tag } });
+function repositorySlug(url) {
+  const match = String(url || "").match(/github\.com\/([^/]+)\/([^/#]+?)(?:\.git)?(?:[?#/]|$)/i);
+  return match ? `${match[1]}/${match[2]}` : "";
 }
 
-function onKeydown(e) {
-  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-    e.preventDefault();
+function cachedGithub(slug) {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(`vix-registry:github:${slug}`) || "null");
+    if (value?.storedAt && Date.now() - value.storedAt < 30 * 60 * 1000) return value.data;
+  } catch {}
+  return null;
+}
+
+async function loadGithubMetadata(list) {
+  const repos = [...new Set(list.map((pkg) => repositorySlug(pkg.repoUrl)).filter(Boolean))].slice(0, FEATURED_LIMIT);
+  await Promise.allSettled(repos.map(async (slug) => {
+    const cached = cachedGithub(slug);
+    if (cached) {
+      githubByRepo.value = { ...githubByRepo.value, [slug]: cached };
+      return;
+    }
+    const response = await fetch(`${GH_API_BASE}/repos/${slug}`, { headers: { Accept: "application/vnd.github+json" } });
+    if (!response.ok) return;
+    const data = await response.json();
+    const metadata = { stargazers_count: data.stargazers_count, pushed_at: data.pushed_at };
+    githubByRepo.value = { ...githubByRepo.value, [slug]: metadata };
+    try { sessionStorage.setItem(`vix-registry:github:${slug}`, JSON.stringify({ storedAt: Date.now(), data: metadata })); } catch {}
+  }));
+}
+
+function githubFor(pkg) {
+  return githubByRepo.value[repositorySlug(pkg.repoUrl)] || null;
+}
+
+async function loadPackages() {
+  loading.value = true;
+  error.value = "";
+  try {
+    const { data } = await loadRegistryIndex();
+    generatedAt.value = data?.meta?.generatedAt || "";
+    packages.value = (Array.isArray(data?.entries) ? data.entries : []).map(normalizePackage);
+    void loadGithubMetadata(featured.value);
+  } catch {
+    error.value = "The registry index could not be loaded. Check your connection and try again.";
+  } finally {
+    loading.value = false;
+  }
+}
+
+function onKeydown(event) {
+  const target = event.target;
+  const isTyping = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable;
+  if (((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") || (event.key === "/" && !isTyping)) {
+    event.preventDefault();
     searchInput.value?.focus();
   }
 }
 
 onMounted(() => {
   document.addEventListener("keydown", onKeydown);
-  // Fetch real stats if API available
-  // fetch("/api/stats").then(r => r.json()).then(d => { stats.value = d; }).catch(() => {});
+  loadPackages();
 });
-
-onBeforeUnmount(() => {
-  document.removeEventListener("keydown", onKeydown);
-});
+onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
 </script>
 
+<template>
+  <div class="registry-home">
+    <RegistrySiteHeader />
+
+    <main>
+      <section class="hero">
+        <div class="hero__inner">
+          <div class="hero__eyebrow"><span /> Vix Registry</div>
+          <h1>The package registry<br />for modern C++.</h1>
+          <p class="hero__lead">Discover, publish, version, and install reusable C++ packages with Vix.</p>
+
+          <form class="hero-search" role="search" @submit.prevent="submitSearch">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.7" stroke="currentColor" stroke-width="1.7" /><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
+            <label class="sr-only" for="registry-home-search">Search packages</label>
+            <input id="registry-home-search" ref="searchInput" v-model="query" type="search" placeholder="Search by package, namespace, or capability" autocomplete="off" spellcheck="false" />
+            <kbd aria-hidden="true">/</kbd>
+            <button type="submit">Search</button>
+          </form>
+
+          <div class="hero__actions">
+            <RouterLink class="button button--primary" to="/browse">Explore packages <span aria-hidden="true">→</span></RouterLink>
+            <RouterLink class="button button--secondary" to="/publish">Publish a package</RouterLink>
+          </div>
+
+          <div class="hero__facts" aria-label="Registry summary">
+            <span><strong>{{ loading ? "—" : packageCount }}</strong> packages</span>
+            <span><strong>{{ loading ? "—" : namespaceCount }}</strong> namespaces</span>
+            <span>Open registry index</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="discovery section-band" aria-labelledby="discovery-title">
+        <div class="content">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Package discovery</span>
+              <h2 id="discovery-title">Build on what already exists.</h2>
+              <p>Browse real packages from the public Vix registry index.</p>
+            </div>
+            <RouterLink class="text-link" to="/browse">Browse all packages <span aria-hidden="true">→</span></RouterLink>
+          </div>
+
+          <div v-if="loading" class="data-state" aria-live="polite">
+            <span class="spinner" aria-hidden="true" /> Loading registry packages…
+          </div>
+          <div v-else-if="error" class="data-state data-state--error" role="alert">
+            <span>{{ error }}</span>
+            <button type="button" @click="loadPackages">Try again</button>
+          </div>
+          <div v-else-if="packages.length === 0" class="data-state">No packages have been published yet.</div>
+
+          <template v-else>
+            <div class="package-group">
+              <div class="package-group__heading">
+                <div><h3>Featured packages</h3><p>Complete package metadata, documentation, examples, and tests.</p></div>
+                <span v-if="indexDate">Index updated {{ indexDate }}</span>
+              </div>
+              <div class="package-grid">
+                <RegistryPackageCard v-for="pkg in featured" :key="`featured-${pkg.namespace}/${pkg.name}`" :pkg="pkg" :github="githubFor(pkg)" />
+              </div>
+            </div>
+
+            <div class="package-columns">
+              <div class="package-group">
+                <div class="package-group__heading"><div><h3>Recently updated</h3><p>Latest activity reported by published package metadata.</p></div></div>
+                <div class="package-stack">
+                  <RegistryPackageCard v-for="pkg in recentlyUpdated" :key="`recent-${pkg.namespace}/${pkg.name}`" :pkg="pkg" :github="githubFor(pkg)" />
+                </div>
+              </div>
+              <div class="package-group">
+                <div class="package-group__heading"><div><h3>New packages</h3><p>Fresh entries and first releases ready to explore.</p></div></div>
+                <div class="package-stack">
+                  <RegistryPackageCard v-for="pkg in newPackages" :key="`new-${pkg.namespace}/${pkg.name}`" :pkg="pkg" :github="githubFor(pkg)" />
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <section class="why section-band" aria-labelledby="why-title">
+        <div class="content why__layout">
+          <div class="why__intro">
+            <span class="eyebrow">Why Vix Registry?</span>
+            <h2 id="why-title">A native package workflow for C++.</h2>
+            <p>The registry connects searchable metadata, source repositories, immutable release tags, and the Vix CLI.</p>
+          </div>
+          <div class="benefits">
+            <article><span>01</span><div><h3>Package discovery</h3><p>Find reusable C++ libraries and tools from one searchable public index.</p></div></article>
+            <article><span>02</span><div><h3>Versioned releases</h3><p>Publish package versions tied to source repositories, commits, and release tags.</p></div></article>
+            <article><span>03</span><div><h3>Native Vix workflow</h3><p>Search, add, install, and publish packages directly from the Vix CLI.</p></div></article>
+            <article><span>04</span><div><h3>Reproducible dependencies</h3><p>Declare explicit package versions in Vix manifests and preserve resolution in the project lockfile.</p></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="workflow section-band" aria-labelledby="workflow-title">
+        <div class="content workflow__layout">
+          <div class="workflow__copy">
+            <span class="eyebrow">Native workflow</span>
+            <h2 id="workflow-title">From discovery to build.</h2>
+            <p>Use the same CLI to find a package, add it to your manifest, resolve dependencies, and build your project.</p>
+            <a class="text-link" href="https://docs.vixcpp.com" target="_blank" rel="noreferrer">Read the Vix documentation <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="terminal" aria-label="Vix CLI workflow example">
+            <div class="terminal__bar"><span /><span /><span /><strong>vix · project</strong></div>
+            <pre><code><span class="prompt">$</span> <span class="command">vix search</span> requests
+<span class="result">vix/requests</span> <span class="muted">latest: 1.2.1</span>
+
+<span class="prompt">$</span> <span class="command">vix add</span> vix/requests
+<span class="success">✓</span> Added vix/requests to vix.json
+
+<span class="prompt">$</span> <span class="command">vix build</span>
+<span class="success">✓</span> Build completed</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="publish-band">
+        <div class="content publish-band__inner">
+          <div><span class="eyebrow">Publish from your terminal</span><h2>Share a reusable C++ package.</h2><p>Validate your manifest, tag a release, and submit it to the registry through the Vix CLI.</p></div>
+          <RouterLink class="button button--primary" to="/publish">View publishing workflow <span aria-hidden="true">→</span></RouterLink>
+        </div>
+      </section>
+    </main>
+
+    <footer class="registry-footer">
+      <div class="content registry-footer__inner">
+        <div><strong>Vix Registry</strong><p>The public package index for Vix.cpp and modern C++ projects.</p></div>
+        <nav aria-label="Footer navigation"><RouterLink to="/browse">Packages</RouterLink><RouterLink to="/publish">Publish</RouterLink><a href="https://docs.vixcpp.com" target="_blank" rel="noreferrer">Docs</a><a href="https://github.com/vixcpp/registry" target="_blank" rel="noreferrer">GitHub</a></nav>
+      </div>
+      <div class="content registry-footer__bottom"><span>MIT licensed · Vix.cpp</span><a href="https://softadastra.com" target="_blank" rel="noreferrer">Maintained by Softadastra</a></div>
+    </footer>
+  </div>
+</template>
+
 <style scoped>
-/* ===================== ROOT ===================== */
-.rh {
-  position: relative;
-  min-height: 100vh;
-  background: #0e0e10;
-  color: #f0f0f2;
-  font-family: system-ui, -apple-system, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-}
-
-/* ===================== BG ===================== */
-.rh-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  /* pointer-events activés pour les interactions souris sur le canvas */
-  opacity: 0.45;
-}
-
-/* ===================== HEADER ===================== */
-.rh-header {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  background: rgba(14, 14, 16, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.rh-header-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-  height: 58px;
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.rh-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  text-decoration: none;
-  margin-right: 2rem;
-  flex-shrink: 0;
-}
-
-.rh-brand-mark {
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-}
-
-.rh-brand-name {
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: #22c55e;
-  letter-spacing: -0.4px;
-}
-
-.rh-brand-ext {
-  font-size: 0.95rem;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.35);
-  letter-spacing: 0;
-}
-
-.rh-nav {
-  display: none;
-  align-items: center;
-  gap: 4px;
-}
-
-.rh-nav-link {
-  font-size: 0.875rem;
-  color: rgba(240, 240, 242, 0.6);
-  text-decoration: none;
-  padding: 6px 10px;
-  border-radius: 7px;
-  transition: color 0.13s ease, background 0.13s ease;
-}
-
-.rh-nav-link:hover {
-  color: #f0f0f2;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.rh-header-actions {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-
-.rh-publish-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border-radius: 8px;
-  font-size: 0.83rem;
-  font-weight: 600;
-  background: #22c55e;
-  color: #052e16;
-  text-decoration: none;
-  transition: background 0.13s ease, transform 0.11s ease;
-}
-
-.rh-publish-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.rh-publish-btn:hover {
-  background: #4ade80;
-  transform: translateY(-1px);
-}
-
-/* Burger */
-.rh-burger {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 7px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  cursor: pointer;
-  margin-left: auto;
-}
-
-.rh-burger span {
-  display: block;
-  width: 14px;
-  height: 1.5px;
-  border-radius: 999px;
-  background: rgba(240, 240, 242, 0.7);
-}
-
-.rh-mobile-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 12px 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(14, 14, 16, 0.98);
-}
-
-.rh-mobile-link {
-  display: block;
-  padding: 10px 12px;
-  border-radius: 7px;
-  font-size: 0.92rem;
-  color: rgba(240, 240, 242, 0.75);
-  text-decoration: none;
-  transition: background 0.12s ease;
-}
-
-.rh-mobile-link:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.rh-mobile-publish {
-  margin-top: 6px;
-  background: rgba(34, 197, 94, 0.1);
-  color: #4ade80;
-  border: 1px solid rgba(34, 197, 94, 0.2);
-}
-
-/* ===================== HERO ===================== */
-.rh-hero {
-  position: relative;
-  z-index: 1;
-  padding: 80px 0 64px;
-}
-
-.rh-hero-inner {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-  text-align: center;
-}
-
-.rh-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: rgba(34, 197, 94, 0.08);
-  border: 1px solid rgba(34, 197, 94, 0.2);
-  font-size: 0.73rem;
-  color: #4ade80;
-  margin-bottom: 24px;
-  letter-spacing: 0.02em;
-}
-
-.rh-badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #22c55e;
-  flex-shrink: 0;
-}
-
-.rh-title {
-  margin: 0 0 18px;
-  font-size: clamp(2.2rem, 5vw, 3.8rem);
-  font-weight: 800;
-  letter-spacing: -0.05em;
-  line-height: 1.08;
-  color: #f0f0f2;
-}
-
-.rh-title-accent {
-  color: #22c55e;
-}
-
-.rh-subtitle {
-  margin: 0 0 36px;
-  font-size: 1.05rem;
-  color: rgba(240, 240, 242, 0.55);
-  line-height: 1.7;
-  max-width: 52ch;
-  margin-left: auto;
-  margin-right: auto;
-  margin-bottom: 36px;
-}
-
-.rh-br { display: none; }
-
-/* ===================== SEARCH ===================== */
-.rh-search-wrap {
-  display: flex;
-  gap: 8px;
-  max-width: 620px;
-  margin: 0 auto 16px;
-}
-
-.rh-search {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  padding: 0 14px;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.rh-search:focus-within {
-  border-color: rgba(34, 197, 94, 0.4);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
-}
-
-.rh-search-icon {
-  width: 16px;
-  height: 16px;
-  color: rgba(240, 240, 242, 0.35);
-  flex-shrink: 0;
-}
-
-.rh-search-input {
-  flex: 1;
-  background: transparent;
-  border: 0;
-  outline: none;
-  font-size: 0.95rem;
-  color: #f0f0f2;
-  padding: 13px 0;
-  caret-color: #22c55e;
-  min-width: 0;
-}
-
-.rh-search-input::placeholder {
-  color: rgba(240, 240, 242, 0.3);
-}
-
-/* Hide default search cancel button */
-.rh-search-input::-webkit-search-cancel-button { display: none; }
-
-.rh-search-kbd {
-  font-family: ui-monospace, monospace;
-  font-size: 0.68rem;
-  color: rgba(240, 240, 242, 0.25);
-  padding: 2px 6px;
-  border-radius: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.rh-search-btn {
-  padding: 0 20px;
-  height: 48px;
-  border-radius: 10px;
-  background: #22c55e;
-  color: #052e16;
-  font-size: 0.875rem;
-  font-weight: 700;
-  border: none;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.13s ease, transform 0.11s ease;
-}
-
-.rh-search-btn:hover {
-  background: #4ade80;
-  transform: translateY(-1px);
-}
-
-.rh-search-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-}
-
-/* Quick tags */
-.rh-quick {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: 48px;
-}
-
-.rh-quick-label {
-  font-size: 0.8rem;
-  color: rgba(240, 240, 242, 0.35);
-}
-
-.rh-quick-tag {
-  font-size: 0.78rem;
-  color: rgba(240, 240, 242, 0.55);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 999px;
-  padding: 3px 10px;
-  cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
-}
-
-.rh-quick-tag:hover {
-  color: #4ade80;
-  background: rgba(34, 197, 94, 0.08);
-  border-color: rgba(34, 197, 94, 0.2);
-}
-
-/* Stats */
-.rh-stats {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  overflow: hidden;
-}
-
-.rh-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 14px 24px;
-}
-
-.rh-stat-val {
-  font-size: 1.15rem;
-  font-weight: 800;
-  color: #f0f0f2;
-  letter-spacing: -0.02em;
-  line-height: 1;
-}
-
-.rh-stat-label {
-  font-size: 0.7rem;
-  color: rgba(240, 240, 242, 0.38);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.rh-stat-sep {
-  width: 1px;
-  height: 32px;
-  background: rgba(255, 255, 255, 0.08);
-  flex-shrink: 0;
-}
-
-/* ===================== FEATURES STRIP ===================== */
-.rh-features {
-  position: relative;
-  z-index: 1;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.rh-features-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-  display: flex;
-  align-items: stretch;
-}
-
-.rh-feature {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 16px;
-}
-
-.rh-feature-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.18);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: #22c55e;
-}
-
-.rh-feature-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
-.rh-feature-title {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #e0e0e2;
-  line-height: 1.3;
-}
-
-.rh-feature-desc {
-  font-size: 0.75rem;
-  color: rgba(240, 240, 242, 0.4);
-  margin-top: 1px;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-}
-
-.rh-feature-divider {
-  width: 1px;
-  background: rgba(255, 255, 255, 0.07);
-  flex-shrink: 0;
-}
-
-/* ===================== HOW IT WORKS ===================== */
-.rh-how {
-  position: relative;
-  z-index: 1;
-  padding: 72px 0 64px;
-}
-
-.rh-how-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-  text-align: center;
-}
-
-.rh-how-title {
-  margin: 0 0 10px;
-  font-size: clamp(1.5rem, 2.5vw, 2rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  color: #f0f0f2;
-}
-
-.rh-how-sub {
-  margin: 0 0 48px;
-  font-size: 0.95rem;
-  color: rgba(240, 240, 242, 0.5);
-  line-height: 1.65;
-}
-
-.rh-how-steps {
-  display: flex;
-  align-items: flex-start;
-  gap: 0;
-  text-align: left;
-}
-
-.rh-how-step {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.rh-how-step-n {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: #22c55e;
-  color: #052e16;
-  font-size: 0.8rem;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.rh-how-step-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.rh-how-step-title {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: #e0e0e2;
-}
-
-.rh-how-code {
-  /* inherits code-card */
-}
-
-.rh-code-body {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.rh-code-pre {
-  margin: 0;
-  padding: 12px 14px;
-  font-size: 0.78rem;
-  line-height: 1.7;
-  white-space: pre;
-  width: max-content;
-  min-width: 100%;
-}
-
-.rh-how-connector {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 12px;
-  padding-top: 40px;
-  color: rgba(255, 255, 255, 0.2);
-  flex-shrink: 0;
-}
-
-.rh-how-connector svg {
-  width: 20px;
-  height: 20px;
-}
-
-.rh-how-ctas {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 48px;
-  flex-wrap: wrap;
-}
-
-/* ===================== CTAs ===================== */
-.rh-cta-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 11px 24px;
-  border-radius: 9px;
-  font-size: 0.88rem;
-  font-weight: 700;
-  background: #22c55e;
-  color: #052e16;
-  text-decoration: none;
-  transition: background 0.13s ease, transform 0.11s ease;
-}
-
-.rh-cta-primary:hover {
-  background: #4ade80;
-  transform: translateY(-1px);
-}
-
-.rh-cta-secondary {
-  display: inline-flex;
-  align-items: center;
-  padding: 11px 24px;
-  border-radius: 9px;
-  font-size: 0.88rem;
-  font-weight: 500;
-  color: rgba(240, 240, 242, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  text-decoration: none;
-  transition: color 0.13s ease, background 0.13s ease, border-color 0.13s ease;
-}
-
-.rh-cta-secondary:hover {
-  color: #f0f0f2;
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-/* ===================== PUBLISH CTA ===================== */
-.rh-publish-cta {
-  position: relative;
-  z-index: 1;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 48px 0;
-  background: rgba(34, 197, 94, 0.03);
-}
-
-.rh-publish-cta-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
-  flex-wrap: wrap;
-}
-
-.rh-publish-cta-title {
-  margin: 0 0 8px;
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: #f0f0f2;
-  letter-spacing: -0.02em;
-}
-
-.rh-publish-cta-desc {
-  margin: 0;
-  font-size: 0.88rem;
-  color: rgba(240, 240, 242, 0.5);
-  line-height: 1.65;
-  max-width: 54ch;
-}
-
-/* ===================== FOOTER ===================== */
-.rh-footer {
-  position: relative;
-  z-index: 1;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 20px 0;
-}
-
-.rh-footer-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.rh-footer-copy {
-  font-size: 0.78rem;
-  color: rgba(240, 240, 242, 0.35);
-}
-
-.rh-footer-copy a {
-  color: rgba(240, 240, 242, 0.5);
-  text-decoration: none;
-  transition: color 0.12s ease;
-}
-
-.rh-footer-copy a:hover { color: #f0f0f2; }
-
-.rh-footer-links {
-  display: flex;
-  gap: 16px;
-}
-
-.rh-footer-links a {
-  font-size: 0.78rem;
-  color: rgba(240, 240, 242, 0.35);
-  text-decoration: none;
-  transition: color 0.12s ease;
-}
-
-.rh-footer-links a:hover { color: rgba(240, 240, 242, 0.7); }
-
-/* ===================== RESPONSIVE ===================== */
-@media (min-width: 900px) {
-  .rh-nav { display: flex; }
-  .rh-header-actions { display: flex; }
-  .rh-burger { display: none; }
-  .rh-br { display: inline; }
-}
-
-@media (max-width: 899px) {
-  .rh-brand { margin-right: auto; }
-
-  .rh-how-steps {
-    flex-direction: column;
-    gap: 24px;
-  }
-
-  .rh-how-connector {
-    padding: 0;
-    transform: rotate(90deg);
-    align-self: center;
-  }
-
-  .rh-features-inner {
-    flex-direction: column;
-  }
-
-  .rh-feature-divider {
-    width: 100%;
-    height: 1px;
-  }
-
-  .rh-stats {
-    flex-wrap: wrap;
-  }
-
-  .rh-stat {
-    flex: 1 1 40%;
-    padding: 12px 16px;
-  }
-
-  .rh-stat:nth-child(2) { border-right: none; }
-  .rh-stat:nth-child(3) { border-top: 1px solid rgba(255,255,255,0.08); }
-  .rh-stat:nth-child(4) { border-top: 1px solid rgba(255,255,255,0.08); border-right: none; }
-
-  .rh-publish-cta-inner {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-@media (max-width: 600px) {
-  .rh-hero { padding: 56px 0 48px; }
-  .rh-title { font-size: 2rem; }
-  .rh-search-wrap { flex-direction: column; }
-  .rh-search-btn { height: 44px; }
-  .rh-search-kbd { display: none; }
-  .rh-stat { flex: 1 1 100%; }
-  .rh-stat-sep { display: none; }
-  .rh-stats { border-radius: 10px; }
-}
+.registry-home { --bg: #131619; --bg-soft: #1a1e22; --bg-panel: #1a1e22; --bg-panel-strong: #20252a; --bg-sunken: #0f1215; --text: rgba(255,255,255,.92); --text-soft: rgba(255,255,255,.62); --text-muted: rgba(255,255,255,.4); --text-faint: rgba(255,255,255,.28); --line: rgba(255,255,255,.07); --line-soft: rgba(255,255,255,.045); --line-strong: rgba(255,255,255,.1); --green: #22c55e; --green-soft: #4ade80; --green-bright: #86efac; --green-faint: rgba(34,197,94,.1); --green-line: rgba(34,197,94,.35); --danger: #f87171; --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --container: 1120px; --container-wide: 1240px; --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; --shadow-soft: 0 4px 24px rgba(0,0,0,.35); --shadow-panel: 0 8px 40px rgba(0,0,0,.42); --shadow-green: 0 12px 32px rgba(34,197,94,.18); --speed: 160ms; min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--font-sans); }
+.content { width: min(100% - 2rem, var(--container-wide)); margin-inline: auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; }
+.section-band { padding: clamp(72px, 8vw, 108px) 0; border-top: 1px solid var(--line); }
+.eyebrow { display: inline-flex; color: var(--green-soft); font-size: .7rem; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--bg); }
+.hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .32; background-image: linear-gradient(var(--line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft) 1px, transparent 1px); background-size: 48px 48px; mask-image: linear-gradient(to bottom, black, transparent 88%); }
+.hero__inner { position: relative; width: min(100% - 2rem, 900px); margin-inline: auto; padding: clamp(56px, 7vw, 80px) 0 40px; text-align: center; }
+.hero__eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--green-soft); font-family: var(--font-mono); font-size: .76rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.hero__eyebrow span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px var(--green-faint); }
+.hero h1 { margin-top: 18px; font-size: clamp(3rem, 7vw, 5.6rem); line-height: .98; letter-spacing: -.045em; }
+.hero__lead { max-width: 640px; margin: 20px auto 0; color: var(--text-soft); font-size: clamp(1rem, 1.6vw, 1.18rem); line-height: 1.65; }
+.hero-search { max-width: 760px; min-height: 62px; margin: 30px auto 0; display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 12px; padding: 7px 7px 7px 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg-panel); box-shadow: 0 20px 60px rgba(0,0,0,.34), 0 0 0 1px rgba(34,197,94,.03); transition: border-color var(--speed), box-shadow var(--speed); }
+.hero-search:focus-within { border-color: var(--green-line); box-shadow: 0 20px 60px rgba(0,0,0,.38), 0 0 0 3px var(--green-faint); }
+.hero-search svg { width: 21px; height: 21px; color: var(--text-muted); }
+.hero-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: .98rem; }
+.hero-search input::placeholder { color: var(--text-muted); }
+.hero-search kbd { padding: 3px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-muted); font: .72rem var(--font-mono); }
+.hero-search button { align-self: stretch; min-width: 88px; border: 0; border-radius: var(--radius-md); background: var(--green); color: #07150c; font-weight: 700; cursor: pointer; }
+.hero-search button:hover { background: var(--green-soft); }
+.hero__actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 0 17px; border: 1px solid transparent; border-radius: var(--radius-md); font-size: .88rem; font-weight: 650; transition: transform var(--speed), background var(--speed), border-color var(--speed), color var(--speed); }
+.button:hover { transform: translateY(-1px); }
+.button--primary { background: var(--green); color: #07150c; box-shadow: var(--shadow-green); }
+.button--primary:hover { background: var(--green-soft); color: #07150c; }
+.button--secondary { border-color: var(--line-strong); background: var(--bg-panel); color: var(--text); }
+.button--secondary:hover { border-color: var(--green-line); color: var(--green-soft); }
+.hero__facts { margin-top: 30px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px 28px; color: var(--text-muted); font: .74rem var(--font-mono); }
+.hero__facts span + span::before { content: ""; display: inline-block; width: 3px; height: 3px; margin: 0 20px 2px 0; border-radius: 50%; background: var(--green); }
+.hero__facts strong { color: var(--text-soft); font-weight: 650; }
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 36px; }
+.section-heading h2, .why__intro h2, .workflow__copy h2, .publish-band h2 { margin-top: 12px; font-size: clamp(1.9rem, 3.4vw, 3rem); line-height: 1.06; letter-spacing: -.035em; }
+.section-heading p, .why__intro > p, .workflow__copy > p, .publish-band p { margin-top: 13px; color: var(--text-soft); line-height: 1.65; }
+.text-link { flex-shrink: 0; color: var(--green-soft); font-size: .86rem; font-weight: 650; }
+.text-link:hover { color: var(--green-bright); }
+.data-state { min-height: 220px; display: flex; align-items: center; justify-content: center; gap: 11px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg-soft); color: var(--text-soft); }
+.data-state--error { flex-direction: column; color: var(--danger); }
+.data-state button { padding: 7px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg-panel-strong); color: var(--text); }
+.spinner { width: 18px; height: 18px; border: 2px solid var(--line-strong); border-top-color: var(--green); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.package-group + .package-group { margin-top: 54px; }
+.package-group__heading { min-height: 44px; display: flex; align-items: start; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.package-group__heading h3 { font-size: 1.08rem; letter-spacing: 0; }
+.package-group__heading p, .package-group__heading > span { margin-top: 5px; color: var(--text-muted); font-size: .78rem; line-height: 1.5; }
+.package-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+.package-columns { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: clamp(28px, 5vw, 70px); margin-top: 62px; padding-top: 52px; border-top: 1px solid var(--line); }
+.package-columns .package-group { margin: 0; }
+.package-stack { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.why { background: var(--bg-soft); }
+.why__layout { display: grid; grid-template-columns: minmax(0,.75fr) minmax(0,1.25fr); gap: clamp(48px, 8vw, 110px); align-items: start; }
+.why__intro { position: sticky; top: 94px; }
+.why__intro > p { max-width: 46ch; }
+.benefits { border-top: 1px solid var(--line); }
+.benefits article { display: grid; grid-template-columns: 38px minmax(0,1fr); gap: 18px; padding: 25px 0; border-bottom: 1px solid var(--line); }
+.benefits article > span { padding-top: 3px; color: var(--green-soft); font: .7rem var(--font-mono); }
+.benefits h3 { font-size: 1rem; letter-spacing: 0; }
+.benefits p { margin-top: 8px; color: var(--text-soft); font-size: .88rem; line-height: 1.6; }
+.workflow__layout { display: grid; grid-template-columns: minmax(0,.8fr) minmax(460px,1.2fr); gap: clamp(46px, 8vw, 110px); align-items: center; }
+.workflow__copy > p { max-width: 48ch; margin-bottom: 22px; }
+.terminal { overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg-sunken); box-shadow: var(--shadow-panel); }
+.terminal__bar { min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid var(--line); background: var(--bg-panel); }
+.terminal__bar > span { width: 8px; height: 8px; border-radius: 50%; background: #f87171; }
+.terminal__bar > span:nth-child(2) { background: #fbbf24; }
+.terminal__bar > span:nth-child(3) { background: var(--green); }
+.terminal__bar strong { margin-left: auto; color: var(--text-muted); font: .67rem var(--font-mono); }
+.terminal pre { margin: 0; padding: 24px; border: 0; border-radius: 0; background: transparent; color: var(--text-soft); font: .8rem/1.75 var(--font-mono); white-space: pre-wrap; }
+.terminal .prompt, .terminal .success { color: var(--green-soft); }
+.terminal .command { color: #7dd3fc; font-weight: 650; }
+.terminal .result { color: var(--green-bright); }
+.terminal .muted { color: var(--text-muted); }
+.publish-band { padding: clamp(64px, 8vw, 96px) 0; border-top: 1px solid var(--green-line); background: var(--bg-panel); }
+.publish-band__inner { display: flex; align-items: center; justify-content: space-between; gap: 40px; }
+.publish-band p { max-width: 650px; }
+.publish-band .button { flex-shrink: 0; }
+.registry-footer { border-top: 1px solid var(--line); background: var(--bg-sunken); }
+.registry-footer__inner { display: flex; justify-content: space-between; gap: 40px; padding-top: 44px; padding-bottom: 40px; }
+.registry-footer strong { font-size: 1rem; }
+.registry-footer p { margin-top: 9px; color: var(--text-muted); font-size: .83rem; }
+.registry-footer nav { display: flex; flex-wrap: wrap; align-items: start; gap: 18px; color: var(--text-soft); font-size: .82rem; }
+.registry-footer__bottom { display: flex; justify-content: space-between; gap: 20px; padding-top: 17px; padding-bottom: 17px; border-top: 1px solid var(--line); color: var(--text-muted); font: .7rem var(--font-mono); }
+
+@media (max-width: 1050px) { .package-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .package-columns { grid-template-columns: 1fr; } }
+@media (max-width: 860px) { .why__layout, .workflow__layout { grid-template-columns: 1fr; } .why__intro { position: static; } .workflow__layout { gap: 36px; } .publish-band__inner { align-items: start; flex-direction: column; } }
+@media (max-width: 640px) { .content, .hero__inner { width: min(100% - 1.25rem, var(--container-wide)); } .hero__inner { padding-top: 52px; padding-bottom: 42px; } .hero h1 { font-size: clamp(2.55rem, 13vw, 4rem); } .hero__lead { margin-top: 20px; } .hero-search { grid-template-columns: auto minmax(0,1fr) auto; min-height: 58px; margin-top: 30px; padding-right: 7px; } .hero-search kbd { display: none; } .hero-search button { min-width: 52px; font-size: 0; } .hero-search button::after { content: "→"; font-size: 1rem; } .hero__facts { align-items: center; flex-direction: column; gap: 7px; margin-top: 30px; } .hero__facts span + span::before { display: none; } .section-heading { align-items: start; flex-direction: column; } .package-grid, .package-stack { grid-template-columns: 1fr; } .package-card { min-height: 175px; } .package-group__heading { flex-direction: column; gap: 2px; } .terminal pre { padding: 18px; font-size: .74rem; } .registry-footer__inner, .registry-footer__bottom { flex-direction: column; } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 1.4s; } }
 </style>

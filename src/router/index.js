@@ -1,11 +1,11 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-import RegistryLayout from "@/pages/registry/RegistryLayout.vue";
-import RegistryHome from "@/pages/registry/RegistryHome.vue";
-import RegistryBrowse from "@/pages/registry/RegistryBrowse.vue";
-import RegistryPublish from "@/pages/registry/RegistryPublish.vue";
-import RegistryPkgShow from "@/pages/registry/RegistryPkgShow.vue";
-import NamespacePage from "@/pages/registry/NamespacePage.vue";
+const RegistryLayout = () => import("@/pages/registry/RegistryLayout.vue");
+const RegistryHome = () => import("@/pages/registry/RegistryHome.vue");
+const RegistryBrowse = () => import("@/pages/registry/RegistryBrowse.vue");
+const RegistryPublish = () => import("@/pages/registry/RegistryPublish.vue");
+const RegistryPkgShow = () => import("@/pages/registry/RegistryPkgShow.vue");
+const NamespacePage = () => import("@/pages/registry/NamespacePage.vue");
 
 const routes = [
   {
