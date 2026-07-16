@@ -1,14 +1,18 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import DOMPurify from "dompurify";
-import { marked } from "marked";
 import PrivatePackagesNotice from "@/components/PrivatePackagesNotice.vue";
 import RegistryCopyBlock from "@/components/RegistryCopyBlock.vue";
+import RegistryPackageFiles from "@/components/RegistryPackageFiles.vue";
+import RegistryPackageStats from "@/components/RegistryPackageStats.vue";
 import RegistryState from "@/components/RegistryState.vue";
 import { loadRegistryIndex } from "@/lib/loadRegistryIndex";
+import { renderRegistryMarkdown } from "@/lib/renderRegistryMarkdown";
 
 const route = useRoute();
+const packageTabs = ["overview", "files", "stats", "versions", "dependencies", "manifest"];
+const initialTab = packageTabs.includes(String(route.query.tab || "")) ? String(route.query.tab) : "overview";
+const activeTab = ref(initialTab);
 const loading = ref(true);
 const error = ref("");
 const pkg = ref(null);
@@ -98,6 +102,20 @@ function rewriteMarkdown(markdown, repo, ref) {
     .replace(/(\[[^\]]+\]\()(?!https?:|mailto:|#)([^)]+)(\))/g, `$1${root}$2$3`);
 }
 
+function selectTab(tab, focus = false) {
+  if (!packageTabs.includes(tab)) return;
+  activeTab.value = tab;
+  if (focus) window.requestAnimationFrame(() => document.getElementById(`package-tab-${tab}`)?.focus());
+}
+
+function onTabKeydown(event) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const current = packageTabs.indexOf(activeTab.value);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? packageTabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + packageTabs.length) % packageTabs.length;
+  selectTab(packageTabs[next], true);
+}
+
 async function fetchSourceContent() {
   readmeHtml.value = "";
   manifest.value = null;
@@ -111,9 +129,7 @@ async function fetchSourceContent() {
       const response = await fetch(`${rawBase}/${filename}`);
       if (!response.ok) continue;
       const markdown = rewriteMarkdown(await response.text(), repo, sourceRef.value);
-      const rendered = await marked.parse(markdown);
-      const sectionHeadings = rendered.replaceAll("<h1", "<h2 class=\"readme-heading\"").replaceAll("</h1>", "</h2>");
-      readmeHtml.value = DOMPurify.sanitize(sectionHeadings, { FORBID_TAGS: ["main"] });
+      readmeHtml.value = await renderRegistryMarkdown(markdown);
       break;
     }
     const response = await fetch(`${rawBase}/${pkg.value?.manifestPath || "vix.json"}`);
@@ -143,7 +159,7 @@ async function loadPackage() {
 }
 
 onMounted(loadPackage);
-watch(() => [route.params.namespace, route.params.name], loadPackage);
+watch(id, loadPackage);
 </script>
 
 <template>
@@ -159,19 +175,30 @@ watch(() => [route.params.namespace, route.params.name], loadPackage);
         <div class="package-hero__meta"><strong v-if="latest">v{{ latest }}</strong><span v-if="pkg.license">{{ pkg.license }}</span><span v-if="pkg.type">{{ pkg.type }}</span><span v-if="updatedAt">Updated {{ updatedAt }}</span></div>
       </header>
 
-      <nav class="package-nav" aria-label="Package sections">
-        <a href="#package-overview">Overview</a><a v-if="readmeHtml || readmeLoading" href="#readme">README</a><a href="#versions">Versions</a><a href="#dependencies">Dependencies</a><a href="#manifest">Manifest</a>
+      <nav class="package-nav" role="tablist" aria-label="Package sections" @keydown="onTabKeydown">
+        <button v-for="tab in packageTabs" :id="`package-tab-${tab}`" :key="tab" type="button" role="tab" :aria-selected="activeTab === tab" :aria-controls="`package-panel-${tab}`" :tabindex="activeTab === tab ? 0 : -1" :class="{ active: activeTab === tab }" @click="selectTab(tab)">{{ tab }}</button>
       </nav>
 
       <div class="package-layout">
         <div class="package-main">
-          <section v-if="readmeHtml || readmeLoading" id="readme" class="package-section">
+          <section v-if="activeTab === 'overview'" id="package-panel-overview" class="package-section" role="tabpanel" aria-labelledby="package-tab-overview" tabindex="0">
             <div class="section-heading"><div><span>Source documentation</span><h2>README</h2></div><a v-if="repository" :href="repository" target="_blank" rel="noreferrer">View source</a></div>
             <RegistryState v-if="readmeLoading" kind="loading" title="Loading README" message="Fetching the release documentation." />
-            <article v-else class="markdown-body" v-html="readmeHtml"></article>
+            <article v-else-if="readmeHtml" class="markdown-body" v-html="readmeHtml"></article>
+            <RegistryState v-else kind="empty" title="No README" message="This package release does not provide source documentation." />
           </section>
 
-          <section id="versions" class="package-section">
+          <section v-else-if="activeTab === 'files'" id="package-panel-files" class="package-section" role="tabpanel" aria-labelledby="package-tab-files" tabindex="0">
+            <div class="section-heading"><div><span>Published source</span><h2>Files</h2></div><span>{{ sourceRef }}</span></div>
+            <RegistryPackageFiles :repository="repository" :source-ref="sourceRef" />
+          </section>
+
+          <section v-else-if="activeTab === 'stats'" id="package-panel-stats" class="package-section" role="tabpanel" aria-labelledby="package-tab-stats" tabindex="0">
+            <div class="section-heading"><div><span>Public repository data</span><h2>GitHub statistics</h2></div><span>Live source metrics</span></div>
+            <RegistryPackageStats :repository="repository" />
+          </section>
+
+          <section v-else-if="activeTab === 'versions'" id="package-panel-versions" class="package-section" role="tabpanel" aria-labelledby="package-tab-versions" tabindex="0">
             <div class="section-heading"><div><span>Published releases</span><h2>Versions</h2></div><span>{{ sortedVersions.length }} total</span></div>
             <div v-if="sortedVersions.length" class="version-list">
               <article v-for="version in sortedVersions" :key="version.version" class="version-row">
@@ -182,13 +209,13 @@ watch(() => [route.params.namespace, route.params.name], loadPackage);
             <RegistryState v-else kind="empty" title="No published versions" message="This package has no version metadata yet." />
           </section>
 
-          <section id="dependencies" class="package-section">
+          <section v-else-if="activeTab === 'dependencies'" id="package-panel-dependencies" class="package-section" role="tabpanel" aria-labelledby="package-tab-dependencies" tabindex="0">
             <div class="section-heading"><div><span>Package manifest</span><h2>Dependencies</h2></div></div>
             <div v-if="dependencies.length" class="dependency-list"><div v-for="dependency in dependencies" :key="`${dependency.kind}:${dependency.name}`"><RouterLink v-if="dependency.kind === 'registry' && dependency.available" :to="`/pkg/${dependency.name}`">{{ dependency.name }}</RouterLink><strong v-else>{{ dependency.name }}</strong><span>{{ dependency.constraint || dependency.kind }}</span></div></div>
             <p v-else class="empty-line">No dependencies.</p>
           </section>
 
-          <section id="manifest" class="package-section">
+          <section v-else id="package-panel-manifest" class="package-section" role="tabpanel" aria-labelledby="package-tab-manifest" tabindex="0">
             <div class="section-heading"><div><span>{{ manifest ? "Published source" : "Registry representation" }}</span><h2>{{ manifest ? "vix.json" : "Registry metadata" }}</h2></div></div>
             <p v-if="!manifest" class="section-note">The source manifest is unavailable, so this is a structured view of metadata present in the public registry index.</p>
             <RegistryCopyBlock :value="manifestText" :label="manifest ? 'vix.json' : 'Registry metadata'" language="json" />
@@ -225,11 +252,13 @@ watch(() => [route.params.namespace, route.params.name], loadPackage);
 .package-hero__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; color: var(--text-muted); font: .7rem var(--font-mono); }
 .package-hero__meta strong { color: var(--green-bright); }
 .package-nav { position: sticky; top: 64px; z-index: 4; display: flex; gap: 22px; overflow-x: auto; margin-bottom: 34px; padding: 13px 0; border-block: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(12px); }
-.package-nav a { flex: 0 0 auto; color: var(--text-muted); font-size: .75rem; }
-.package-nav a:hover { color: var(--green-soft); }
+.package-nav button { position: relative; flex: 0 0 auto; padding: 4px 0; border: 0; background: transparent; color: var(--text-muted); font-size: .75rem; text-transform: capitalize; cursor: pointer; }
+.package-nav button::after { content: ""; position: absolute; right: 0; bottom: -14px; left: 0; height: 2px; background: transparent; }
+.package-nav button:hover, .package-nav button:focus-visible, .package-nav button.active { color: var(--green-soft); }
+.package-nav button.active::after { background: var(--green); }
 .package-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 48px; align-items: start; }
 .package-main { min-width: 0; }
-.package-section { min-width: 0; padding: 0 0 52px; scroll-margin-top: 135px; }
+.package-section { min-width: 0; padding: 0 0 52px; outline: 0; }
 .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .section-heading span, .sidebar-label { color: var(--green-soft); font: .64rem var(--font-mono); text-transform: uppercase; }
 .section-heading h2 { margin-top: 4px; color: var(--text); font: 650 1.18rem var(--font-display); }
@@ -269,13 +298,14 @@ watch(() => [route.params.namespace, route.params.name], loadPackage);
 .markdown-body :deep(ul), .markdown-body :deep(ol) { padding-left: 24px; }
 .markdown-body :deep(a) { color: var(--green-soft); text-decoration: underline; text-underline-offset: 3px; }
 .markdown-body :deep(img) { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
-.markdown-body :deep(pre) { max-width: 100%; padding: 16px; overflow-x: auto; border: 1px solid var(--line-ink); border-radius: var(--radius-md); background: var(--bg-ink); color: var(--text); }
+.markdown-body :deep(pre) { position: relative; max-width: 100%; margin: 18px 0; padding: 18px; overflow-x: auto; border: 1px solid var(--line-ink); border-radius: var(--radius-md); background: var(--bg-ink) !important; color: var(--text); }
 .markdown-body :deep(code) { padding: 2px 5px; border-radius: 3px; background: var(--bg-ink); font: .82em var(--font-mono); }
-.markdown-body :deep(pre code) { padding: 0; background: transparent; }
+.markdown-body :deep(pre code) { display: block; min-width: max-content; padding: 0; background: transparent; font: .78rem/1.7 var(--font-mono); }
+.markdown-body :deep(.shiki span) { font-style: normal; }
 .markdown-body :deep(blockquote) { padding-left: 16px; border-left: 3px solid var(--green-line); color: var(--text-muted); }
 .markdown-body :deep(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .markdown-body :deep(th), .markdown-body :deep(td) { padding: 8px 10px; border: 1px solid var(--line); text-align: left; }
-@media (max-width: 980px) { .package-layout { grid-template-columns: minmax(0, 1fr); gap: 0; } .package-sidebar { position: static; grid-row: 1; margin-bottom: 42px; } }
+@media (max-width: 980px) { .package-layout { grid-template-columns: minmax(0, 1fr); gap: 0; } .package-sidebar { position: static; margin-top: 24px; margin-bottom: 42px; } }
 @media (max-width: 680px) { .package-page { padding-top: 28px; } .package-nav { top: 58px; gap: 17px; } .version-row { grid-template-columns: 1fr; gap: 13px; } }
 @media (max-width: 420px) { .section-heading { align-items: start; flex-direction: column; gap: 7px; } }
 </style>
