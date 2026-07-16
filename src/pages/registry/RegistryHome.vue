@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import RegistryPackageCard from "@/components/RegistryPackageCard.vue";
-import RegistrySiteHeader from "@/components/RegistrySiteHeader.vue";
 import { loadRegistryIndex } from "@/lib/loadRegistryIndex";
 import { useBodyClass } from "@/lib/useBodyClass";
 
@@ -153,9 +152,7 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
 
 <template>
   <div class="registry-home">
-    <RegistrySiteHeader />
-
-    <main>
+    <div>
       <section class="hero">
         <div class="hero__inner">
           <div class="hero__eyebrow"><span /> Vix Registry</div>
@@ -276,15 +273,8 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
           <RouterLink class="button button--primary" to="/publish">View publishing workflow <span aria-hidden="true">→</span></RouterLink>
         </div>
       </section>
-    </main>
+    </div>
 
-    <footer class="registry-footer">
-      <div class="content registry-footer__inner">
-        <div><strong>Vix Registry</strong><p>The public package index for Vix.cpp and modern C++ projects.</p></div>
-        <nav aria-label="Footer navigation"><RouterLink to="/browse">Packages</RouterLink><RouterLink to="/publish">Publish</RouterLink><a href="https://docs.vixcpp.com" target="_blank" rel="noreferrer">Docs</a><a href="https://github.com/vixcpp/registry" target="_blank" rel="noreferrer">GitHub</a></nav>
-      </div>
-      <div class="content registry-footer__bottom"><span>MIT licensed · Vix.cpp</span><a href="https://softadastra.com" target="_blank" rel="noreferrer">Maintained by Softadastra</a></div>
-    </footer>
   </div>
 </template>
 

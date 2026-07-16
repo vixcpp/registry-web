@@ -1,732 +1,281 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
+import PrivatePackagesNotice from "@/components/PrivatePackagesNotice.vue";
+import RegistryCopyBlock from "@/components/RegistryCopyBlock.vue";
+import RegistryState from "@/components/RegistryState.vue";
 import { loadRegistryIndex } from "@/lib/loadRegistryIndex";
-import RegistrySearchWorker from "@/workers/registrySearch.worker.js?worker";
-import PkgShowHeader  from "./pkgshow/PkgShowHeader.vue";
-import PkgOverviewTab from "./pkgshow/PkgOverviewTab.vue";
-import PkgDocsTab     from "./pkgshow/PkgDocsTab.vue";
-import PkgFilesTab    from "./pkgshow/PkgFilesTab.vue";
-import PkgVersionsTab from "./pkgshow/PkgVersionsTab.vue";
-import { marked }     from "marked";
-import DOMPurify      from "dompurify";
-import { createHighlighter } from "shiki";
 
-onMounted(() => document.body.classList.add("is-registry"));
-onBeforeUnmount(() => document.body.classList.remove("is-registry"));
-
-const route  = useRoute();
-const router = useRouter();
-const worker = new RegistrySearchWorker();
-
-const loading      = ref(true);
-const error        = ref("");
-const indexVersion = ref("");
-const pkg          = ref(null);
-
-const activeTab      = ref((route.query.tab || "overview").toString());
-const selectedVersion = ref("");
-
-const tabKey = ref({ overview: 0, docs: 0, files: 0, versions: 0 });
-
-function reloadTab(t) {
-  const tab = (t || activeTab.value || "overview").toString();
-  tabKey.value = { ...tabKey.value, [tab]: (tabKey.value[tab] || 0) + 1 };
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  if (tab === "overview") loadReadme();
-  if (tab === "files")    loadDir(currentPath.value || "");
-  if (tab === "docs")     loadDocs();
-}
-
-const isDev = computed(() => !!import.meta.env.DEV);
-
-/* README */
+const route = useRoute();
+const loading = ref(true);
+const error = ref("");
+const pkg = ref(null);
+const allPackageIds = ref(new Set());
+const readmeHtml = ref("");
 const readmeLoading = ref(false);
-const readmeError   = ref("");
-const readmeHtml    = ref("");
-const readmeToc     = ref([]);
-const readmeMeta    = ref({ path: "", sourceUrl: "", editUrl: "" });
-const readmeWarn    = ref("");
+const manifest = ref(null);
+const sourceNotice = ref("");
 
-/* Docs */
-const docsLoading       = ref(false);
-const docsError         = ref("");
-const docsHeaderPicked  = ref("");
-const docsHeadersTried  = ref([]);
-const docsCounts        = ref({ namespaces: 0, types: 0, functions: 0, macros: 0, enums: 0 });
-const docsSymbols       = ref({ namespaces: [], types: [], functions: [], macros: [], enums: [] });
-const docsJump          = ref("");
-const docsGroupsTab     = ref("functions");
+const id = computed(() => `${route.params.namespace || ""}/${route.params.name || ""}`);
+const latest = computed(() => pkg.value?.latestVersion || pkg.value?.latest || sortedVersions.value[0]?.version || "");
+const repository = computed(() => typeof pkg.value?.repo === "string" ? pkg.value.repo : pkg.value?.repo?.url || "");
+const defaultBranch = computed(() => pkg.value?.repo?.defaultBranch || "main");
+const latestMeta = computed(() => pkg.value?.versions?.[latest.value] || {});
+const sourceRef = computed(() => latestMeta.value.tag || latestMeta.value.commit || defaultBranch.value);
+const installCommand = computed(() => `vix add ${id.value}`);
+const versionCommand = (version) => `vix add ${id.value}@${version}`;
 
-/* Files */
-const filesLoading    = ref(false);
-const filesError      = ref("");
-const currentPath     = ref("");
-const repoListing     = ref([]);
-const filesFilter     = ref("");
-const filesShowHidden = ref(false);
-const filesSortKey    = ref("type");
-const filesSortDir    = ref("asc");
-const filesLimit      = ref(120);
-const pinnedRoots     = ref(["README.md","LICENSE","LICENSE.md","vix.json","CMakeLists.txt","CMakePresets.json","include","src","tests","examples","docs"]);
+const sortedVersions = computed(() => Object.entries(pkg.value?.versions || {})
+  .map(([version, metadata]) => ({ version, ...(metadata || {}) }))
+  .sort((a, b) => compareVersions(b.version, a.version)));
 
-/* Preview */
-const previewOpen    = ref(false);
-const previewLoading = ref(false);
-const previewError   = ref("");
-const previewNode    = ref(null);
-const previewText    = ref("");
-const previewHtml    = ref("");
-const previewLang    = ref("txt");
-
-/* GitHub */
-const ghNotice = ref("");
-
-/* Env */
-const GH_WEB_BASE = computed(() => (import.meta.env.VITE_GITHUB_WEB_BASE || "https://github.com").toString().replace(/\/+$/, ""));
-const GH_API_BASE = computed(() => (import.meta.env.VITE_GITHUB_API_BASE || "https://api.github.com").toString().replace(/\/+$/, ""));
-const GH_RAW_BASE = computed(() => (import.meta.env.VITE_GITHUB_RAW_BASE || "https://raw.githubusercontent.com").toString().replace(/\/+$/, ""));
-
-const offlineMode = computed(() => {
-  const q   = (route.query.offline || "").toString();
-  const env = (import.meta.env.VITE_OFFLINE || "").toString();
-  return q === "1" || q === "true" || env === "1" || env === "true";
+const updatedAt = computed(() => formatDate(pkg.value?.updatedAt || pkg.value?.activityAt || pkg.value?.api?.updatedAt));
+const maintainers = computed(() => Array.isArray(pkg.value?.maintainers) ? pkg.value.maintainers : []);
+const dependencies = computed(() => normalizeDependencies(pkg.value?.dependencies ?? pkg.value?.deps));
+const registryMetadata = computed(() => {
+  if (!pkg.value) return {};
+  const { versions, ...metadata } = pkg.value;
+  return { ...metadata, latestVersion: latest.value, versionCount: Object.keys(versions || {}).length };
 });
+const manifestText = computed(() => JSON.stringify(manifest.value || registryMetadata.value, null, 2));
+const overviewItems = computed(() => [
+  ["Latest version", latest.value ? `v${latest.value}` : "Not available"],
+  ["Package type", pkg.value?.type || "Not specified"],
+  ["License", pkg.value?.license || "Not specified"],
+  ["C++ standard", pkg.value?.constraints?.minCppStandard || "Not specified"],
+  ["Updated", updatedAt.value || "Not available"],
+  ["Versions", String(sortedVersions.value.length)],
+]);
 
-function getClientToken() {
-  if (!import.meta.env.DEV) return "";
-  return (import.meta.env.VITE_GITHUB_TOKEN || "").toString().trim();
-}
-
-const hasDevToken      = computed(() => !!getClientToken());
-const tokenPolicyLabel = computed(() => import.meta.env.DEV ? (hasDevToken.value ? "DEV token enabled" : "DEV token missing") : "Token disabled in production");
-
-/* Package computed */
-const id = computed(() => {
-  const ns   = (route.params.namespace || "").toString().trim();
-  const name = (route.params.name || "").toString().trim();
-  return ns && name ? `${ns}/${name}` : "";
-});
-
-const pkgDisplayName = computed(() => ((pkg.value || {}).displayName || (pkg.value || {}).name || id.value || "").toString());
-const pkgLatest = computed(() => {
-  const p = pkg.value || {};
-  return (typeof p.latestVersion === "string" && p.latestVersion) || (typeof p.latest === "string" && p.latest) || "";
-});
-const pkgRepoUrl = computed(() => { const p = pkg.value || {}; const r = p.repo || {}; return (r.url || p.repo || "").toString(); });
-const pkgVersions = computed(() => { const p = pkg.value || {}; const v = p.versions || {}; return v && typeof v === "object" ? v : {}; });
-
-const sortedVersions = computed(() => {
-  const v = pkgVersions.value;
-  const keys = Object.keys(v);
-  const parse = (s) => { const m = `${s}`.match(/^(\d+)\.(\d+)\.(\d+)/); return m ? [Number(m[1]),Number(m[2]),Number(m[3])] : [0,0,0]; };
-  keys.sort((a,b) => { const A=parse(a),B=parse(b); for(let i=0;i<3;i++) if(A[i]!==B[i]) return B[i]-A[i]; return b.localeCompare(a); });
-  return keys.map(k => ({ version: k, ...v[k] }));
-});
-
-const selectedVersionMeta = computed(() => { const v = selectedVersion.value || pkgLatest.value; return v ? (pkgVersions.value[v] || null) : null; });
-const selectedCommit = computed(() => { const m = selectedVersionMeta.value; return m && typeof m.commit === "string" ? m.commit : ""; });
-const selectedTag    = computed(() => { const m = selectedVersionMeta.value; return m && typeof m.tag === "string" ? m.tag : ""; });
-const selectedRef    = computed(() => selectedTag.value || selectedCommit.value || "main");
-
-const overviewBadges = computed(() => {
-  const p = pkg.value || {};
-  return [{ k:"Latest", v: pkgLatest.value||"-" }, { k:"License", v:(p.license||"-").toString() }, { k:"Type", v:(p.type||"-").toString() }];
-});
-
-const installSnippet = computed(() => {
-  const p = pkg.value || {};
-  const ns = (p.namespace||"").toString(), nm = (p.name||"").toString(), ver = selectedVersion.value || pkgLatest.value || "";
-  return `vix add ${ver ? `${ns}/${nm}@${ver}` : `${ns}/${nm}`}`;
-});
-
-const includeSnippet = computed(() => {
-  const p = pkg.value || {};
-  const headers = p.exports && Array.isArray(p.exports.headers) ? p.exports.headers : [];
-  const name = (p.name||"").toString().trim();
-  const h = headers.length ? headers[0] : "";
-  return h ? `#include <${h}>` : name ? `#include <${name}/${name}.hpp>` : "#include <...>";
-});
-
-const registryExportsHeaders = computed(() => { const p = pkg.value || {}; return p.exports && Array.isArray(p.exports.headers) ? p.exports.headers : []; });
-const hasRegistryExports = computed(() => registryExportsHeaders.value.length > 0);
-
-/* Helpers */
-function shortSha(s) { const v = (s||"").toString(); return v.length > 8 ? v.slice(0,8) : v; }
-
-function setTab(tab) {
-  const t = (tab||"overview").toString();
-  activeTab.value = t;
-  router.replace({ query: { ...route.query, tab: t } }).catch(()=>{});
-}
-
-function parseGitHubRepo(url) {
-  const u = (url||"").toString().trim();
-  const m = u.match(/github\.com\/([^/]+)\/([^/]+)(?:$|\/)/i);
-  if (m) return { owner: m[1], repo: m[2].replace(/\.git$/i,"") };
-  const m2 = u.match(/\/([^/]+)\/([^/]+?)(?:$|\/)/);
-  if (!m2) return null;
-  return { owner: m2[1], repo: m2[2].replace(/\.git$/i,"") };
-}
-
-function githubWebUrl({ owner, repo, ref, path }) {
-  const p = (path||"").replace(/^\/+/,"");
-  return p ? `${GH_WEB_BASE.value}/${owner}/${repo}/blob/${ref}/${p}` : `${GH_WEB_BASE.value}/${owner}/${repo}`;
-}
-
-function githubTreeUrl({ owner, repo, ref, path }) {
-  const p = (path||"").replace(/^\/+/,"");
-  return p ? `${GH_WEB_BASE.value}/${owner}/${repo}/tree/${ref}/${p}` : `${GH_WEB_BASE.value}/${owner}/${repo}/tree/${ref}`;
-}
-
-function niceSize(bytes) {
-  const n = Number(bytes||0);
-  if (!n||n<=0) return "";
-  if (n<1024) return `${n} B`;
-  if (n<1024*1024) return `${(n/1024).toFixed(0)} KB`;
-  return `${(n/(1024*1024)).toFixed(1)} MB`;
-}
-
-function safeClipboardCopy(text) {
-  const s = (text||"").toString(); if (!s) return;
-  if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(s).catch(()=>{}); return; }
-  const ta = document.createElement("textarea"); ta.value = s; ta.style.position="fixed"; ta.style.left="-9999px";
-  document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch {} document.body.removeChild(ta);
-}
-
-/* Cache */
-const CACHE_NS = "vix_gh_cache_v1";
-function cacheKey(parts) { return `${CACHE_NS}:${parts.map(x=>(x||"").toString()).join(":")}` ; }
-function cacheGet(key) {
-  try {
-    const raw = localStorage.getItem(key); if (!raw) return null;
-    const obj = JSON.parse(raw);
-    if (!obj||typeof obj!=="object"||typeof obj.exp!=="number") return null;
-    if (Date.now()>obj.exp) { localStorage.removeItem(key); return null; }
-    return obj.val;
-  } catch { return null; }
-}
-function cacheSet(key,val,ttlMs) {
-  try { localStorage.setItem(key, JSON.stringify({ exp: Date.now()+Math.max(5000,Number(ttlMs||0)), val })); } catch {}
-}
-function ttlMsDefault(kind) {
-  const prod = !!import.meta.env.PROD;
-  if (kind==="readme")   return prod?3600000:900000;
-  if (kind==="contents") return prod?1800000:600000;
-  if (kind==="header")   return prod?3600000:900000;
-  if (kind==="search")   return prod?300000:120000;
-  return prod?900000:300000;
-}
-
-/* GitHub fetch */
-function parseRateLimitReset(res) {
-  const rem=res.headers.get("x-ratelimit-remaining"), reset=res.headers.get("x-ratelimit-reset");
-  if (rem!=="0"||!reset) return null;
-  const ts=Number(reset)*1000; return ts ? new Date(ts) : null;
-}
-function isApiUrl(url) { const u=(url||"").toString(); return u.startsWith(GH_API_BASE.value+"/") || u===GH_API_BASE.value; }
-
-async function ghFetch(url, { accept="application/vnd.github+json", as="json" }={}) {
-  if (offlineMode.value) throw new Error("offline_mode");
-  const headers = { Accept: accept };
-  const token = getClientToken();
-  if (token && isApiUrl(url)) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    if (res.status===403) { const r=parseRateLimitReset(res); if(r) { ghNotice.value=`GitHub rate limit reached. Try again at ${r.toLocaleTimeString()}.`; throw new Error("github_rate_limited"); } }
-    let extra=""; try { const j=await res.json(); if(j&&j.message) extra=` (${j.message})`; } catch {}
-    throw new Error(`github_http_${res.status}${extra}`);
+function compareVersions(a, b) {
+  const parts = (value) => String(value).replace(/^v/, "").split(/[.-]/).map((part) => /^\d+$/.test(part) ? Number(part) : part);
+  const left = parts(a), right = parts(b);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const x = left[index] ?? -1, y = right[index] ?? -1;
+    if (x === y) continue;
+    if (typeof x === "number" && typeof y === "number") return x - y;
+    return String(x).localeCompare(String(y));
   }
-  return as==="text" ? res.text() : res.json();
+  return 0;
 }
 
-function ghApiUrl(path) { return `${GH_API_BASE.value}/${(path||"").replace(/^\/+/,"")}`; }
-
-function toAbsWebUrl({ owner, repo, ref, path }) { return githubWebUrl({ owner, repo, ref, path }); }
-function toAbsRawUrl({ owner, repo, ref, path }) {
-  const rawBase = GH_RAW_BASE.value;
-  if (/raw\.githubusercontent\.com$/i.test(rawBase)) { const p=(path||"").replace(/^\/+/,""); return `${rawBase}/${owner}/${repo}/${ref}/${p}`; }
-  return toAbsWebUrl({ owner, repo, ref, path });
+function formatDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
-function rewriteMarkdownLinks(md, { owner, repo, ref, baseDir }) {
-  const src=(md||"").toString(); if(!src) return src;
-  const normalizeRel=(p)=>{
-    const s=(p||"").toString().trim(); if(!s) return "";
-    if(s.startsWith("http://")||s.startsWith("https://")||s.startsWith("mailto:")) return s;
-    if(s.startsWith("#")) return s;
-    if(s.startsWith("/")) return s.replace(/^\/+/,"");
-    const dir=(baseDir||"").replace(/^\/+/,"").replace(/\/+$/,"");
-    return dir?`${dir}/${s}`:s;
+function normalizeDependencies(value) {
+  if (!value) return [];
+  const result = [];
+  const add = (name, constraint = "", kind = "registry") => {
+    const clean = String(name || "").replace(/^@/, "");
+    if (clean) result.push({ name: clean, constraint: String(constraint || ""), kind, available: allPackageIds.value.has(clean) });
   };
-  const replaceUrl=(raw,isImage)=>{
-    const trimmed=raw.trim().replace(/^<|>$/g,""); const rel=normalizeRel(trimmed); if(!rel) return raw;
-    if(rel.startsWith("http://")||rel.startsWith("https://")||rel.startsWith("mailto:")||rel.startsWith("#")) return trimmed;
-    return isImage ? toAbsRawUrl({owner,repo,ref,path:rel}) : toAbsWebUrl({owner,repo,ref,path:rel});
-  };
-  let out=src.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,(m,alt,url)=>`![${alt}](${replaceUrl(url,true)})`);
-  out=out.replace(/\[([^\]]+)\]\(([^)]+)\)/g,(m,text,url)=>`[${text}](${replaceUrl(url,false)})`);
-  return out;
-}
-
-let highlighter=null;
-function guessLang(lang) { const s=(lang||"").toString().trim().toLowerCase(); if(!s) return "txt"; if(s==="c++") return "cpp"; if(s==="shell") return "bash"; return s; }
-async function ensureHighlighter() {
-  if (highlighter) return highlighter;
-  highlighter = await createHighlighter({ themes:["github-dark"], langs:["cpp","c","bash","json","yaml","toml","ini","cmake","xml","html","css","js","ts","diff","md","txt"] });
-  return highlighter;
-}
-function buildTocFromTokens(tokens) {
-  const toc=[];
-  for(const t of tokens||[]) { if(t&&t.type==="heading") { const text=(t.text||"").toString().trim(); const lvl=Number(t.depth||0); if(!text||!lvl) continue; const id=text.toLowerCase().replace(/[^\w\s-]/g,"").trim().replace(/\s+/g,"-").slice(0,80); toc.push({id,text,level:lvl}); } }
-  return toc.slice(0,60);
-}
-function tryFixMojibakeUtf8(s) {
-  const src=(s||"").toString(); if(!src) return src;
-  if(!src.includes("â")&&!src.includes("Ã")) return src;
-  try { const bytes=Uint8Array.from(src,ch=>ch.charCodeAt(0)&0xff); const fixed=new TextDecoder("utf-8",{fatal:false}).decode(bytes); return (fixed.match(/[âÃ]/g)||[]).length<(src.match(/[âÃ]/g)||[]).length?fixed:src; } catch { return src; }
-}
-async function renderMarkdown(md, { tocOut=null }={}) {
-  let source=(md||"").toString(); if(!source) return "";
-  source=tryFixMojibakeUtf8(source);
-  const hl=await ensureHighlighter();
-  const renderer=new marked.Renderer();
-  renderer.heading=(...args)=>{
-    const a0=args[0]; let text="",level=1;
-    if(typeof a0==="string"){text=a0;level=Number(args[1]||1);}
-    else if(a0&&typeof a0==="object"){text=typeof a0.text==="string"?a0.text:"";level=Number(a0.depth||a0.level||1);}
-    const t=(text||"").toString(); const id=t.toLowerCase().replace(/[^\w\s-]/g,"").trim().replace(/\s+/g,"-").slice(0,80);
-    return `<h${level} id="${id}">${t}</h${level}>`;
-  };
-  renderer.code=(code,infostring)=>{
-    let text="",info="";
-    if(typeof code==="string"){text=code;info=typeof infostring==="string"?infostring:"";}
-    else if(code&&typeof code==="object"){text=typeof code.text==="string"?code.text:"";info=typeof code.lang==="string"?code.lang:typeof infostring==="string"?infostring:"";}
-    const lang=guessLang(info);
-    try{return hl.codeToHtml(text,{lang,theme:"github-dark"});}catch{return hl.codeToHtml(text,{lang:"txt",theme:"github-dark"});}
-  };
-  marked.setOptions({gfm:true,breaks:false,renderer});
-  try{const tokens=marked.lexer(source);if(tocOut)tocOut.value=buildTocFromTokens(tokens);}catch{}
-  return DOMPurify.sanitize(marked.parse(source));
-}
-
-/* README */
-function readmeCandidates() {
-  return [
-    {path:"README.md",baseDir:""},{path:"readme.md",baseDir:""},
-    {path:"docs/README.md",baseDir:"docs"},{path:"docs/readme.md",baseDir:"docs"},
-    {path:"packages/README.md",baseDir:"packages"},{path:"packages/readme.md",baseDir:"packages"},
-    {path:`packages/${(pkg.value?.name||"").toString().trim()}/README.md`,baseDir:`packages/${(pkg.value?.name||"").toString().trim()}`},
-    {path:`packages/${(pkg.value?.name||"").toString().trim()}/readme.md`,baseDir:`packages/${(pkg.value?.name||"").toString().trim()}`},
-  ].filter(x=>x.path&&!x.path.includes("//"));
-}
-function decodeBase64Utf8(b64) {
-  const bin=atob((b64||"").replace(/\n/g,"")); const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0)); return new TextDecoder("utf-8").decode(bytes);
-}
-
-async function loadReadme() {
-  readmeLoading.value=true; readmeError.value=""; readmeHtml.value=""; readmeToc.value=[]; readmeMeta.value={path:"",sourceUrl:"",editUrl:""}; readmeWarn.value="";
-  try {
-    const p=pkg.value||{}, fromIndex=(p.readme||"").toString();
-    if(fromIndex){readmeHtml.value=await renderMarkdown(fromIndex,{tocOut:readmeToc});return;}
-    const repoUrl=pkgRepoUrl.value, info=parseGitHubRepo(repoUrl);
-    if(!info) throw new Error("missing_repo_url");
-    const ref=selectedRef.value||"main";
-    if(!import.meta.env.DEV&&!offlineMode.value) ghNotice.value="Public GitHub mode (no token).";
-    const key=cacheKey([info.owner,info.repo,ref,"readme","auto"]);
-    const cached=cacheGet(key);
-    if(cached&&cached.md&&cached.meta) {
-      const rewritten=rewriteMarkdownLinks(cached.md,{owner:info.owner,repo:info.repo,ref,baseDir:cached.meta.baseDir||""});
-      readmeMeta.value={path:cached.meta.path||"",sourceUrl:cached.meta.sourceUrl||"",editUrl:cached.meta.editUrl||""};
-      readmeWarn.value=cached.meta.warn||"";
-      readmeHtml.value=await renderMarkdown(rewritten,{tocOut:readmeToc}); return;
-    }
-    let md="",picked=null;
-    try {
-      const api=ghApiUrl(`repos/${info.owner}/${info.repo}/readme?ref=${encodeURIComponent(ref)}`);
-      const data=await ghFetch(api,{as:"json"});
-      const content=data&&data.content?decodeBase64Utf8(String(data.content)):"";
-      if(content){md=content;picked={path:data.path||"README.md",baseDir:(data.path||"").split("/").slice(0,-1).join("/")};}
-    } catch {}
-    if(!md) {
-      for(const c of readmeCandidates()) {
-        try { const raw=toAbsRawUrl({owner:info.owner,repo:info.repo,ref,path:c.path}); const t=await ghFetch(raw,{as:"text",accept:"text/plain"}); if(t){md=t;picked={path:c.path,baseDir:c.baseDir||""};break;} } catch {}
-      }
-    }
-    if(!md) throw new Error("readme_not_found");
-    if(md.length>250000) readmeWarn.value="README is large. Rendering might be slower.";
-    const rewritten=rewriteMarkdownLinks(md,{owner:info.owner,repo:info.repo,ref,baseDir:picked?.baseDir||""});
-    const sourceUrl=githubWebUrl({owner:info.owner,repo:info.repo,ref,path:picked?.path||""});
-    const editUrl=`${GH_WEB_BASE.value}/${info.owner}/${info.repo}/edit/${ref}/${(picked?.path||"").replace(/^\/+/,"")}`;
-    readmeMeta.value={path:picked?.path||"",sourceUrl,editUrl};
-    cacheSet(key,{md,meta:{path:picked?.path||"",baseDir:picked?.baseDir||"",sourceUrl,editUrl,warn:readmeWarn.value||""}},ttlMsDefault("readme"));
-    readmeHtml.value=await renderMarkdown(rewritten,{tocOut:readmeToc});
-  } catch(e) {
-    const msg=(e&&e.message)||"cannot_load_readme";
-    readmeError.value=msg==="offline_mode"?"Offline mode: README is only available if included in the registry index.":msg;
-  } finally { readmeLoading.value=false; }
-}
-
-/* Files */
-function normalizeContentsItem(x) {
-  return { name:(x&&x.name)||"", path:(x&&x.path)||"", type:(x&&x.type)||"file", size:Number(x&&x.size)||0, sha:(x&&x.sha)||"", download_url:(x&&x.download_url)||"", html_url:(x&&x.html_url)||"" };
-}
-
-async function loadDir(pathInRepo="") {
-  filesLoading.value=true; filesError.value=""; repoListing.value=[];
-  try {
-    const info=parseGitHubRepo(pkgRepoUrl.value); if(!info) throw new Error("not_github_repo");
-    const ref=selectedRef.value||"main"; const dir=(pathInRepo||"").trim().replace(/^\/+/,"").replace(/\/+$/,"");
-    if(offlineMode.value){filesError.value="Offline mode: files browsing is disabled.";return;}
-    const key=cacheKey([info.owner,info.repo,ref,"contents",dir||"root"]);
-    const cached=cacheGet(key);
-    if(cached&&Array.isArray(cached)){repoListing.value=cached;currentPath.value=dir;return;}
-    const base=ghApiUrl(`repos/${info.owner}/${info.repo}/contents`);
-    const api=dir?`${base}/${encodeURIComponent(dir).replace(/%2F/g,"/")}?ref=${encodeURIComponent(ref)}`:`${base}?ref=${encodeURIComponent(ref)}`;
-    const data=await ghFetch(api,{as:"json"}); if(!Array.isArray(data)) throw new Error("unexpected_contents_shape");
-    const list=data.map(normalizeContentsItem).filter(x=>x.path);
-    cacheSet(key,list,ttlMsDefault("contents")); repoListing.value=list; currentPath.value=dir;
-  } catch(e) {
-    const msg=(e&&e.message)||"cannot_load_files";
-    filesError.value=msg==="offline_mode"?"Offline mode: files browsing is disabled.":msg==="github_rate_limited"?"Rate limited by GitHub. Please retry later.":msg;
-  } finally { filesLoading.value=false; }
-}
-
-const pathStack=computed(()=>{const p=(currentPath.value||"").trim();if(!p)return[];const parts=p.split("/").filter(Boolean);const out=[];for(let i=0;i<parts.length;i++)out.push(parts.slice(0,i+1).join("/"));return out;});
-
-function goRoot(){loadDir("");}
-function goCrumb(p){loadDir(p||"");}
-function goUp(){const parts=(currentPath.value||"").split("/").filter(Boolean);parts.pop();loadDir(parts.join("/"));}
-function toggleSort(key){if(filesSortKey.value===key){filesSortDir.value=filesSortDir.value==="asc"?"desc":"asc";}else{filesSortKey.value=key;filesSortDir.value="asc";}}
-
-const filteredSortedListing=computed(()=>{
-  const list=Array.isArray(repoListing.value)?repoListing.value.slice():[];
-  const q=(filesFilter.value||"").toString().trim().toLowerCase();
-  const hiddenOk=x=>filesShowHidden.value||!(x.name||"").toString().startsWith(".");
-  let out=list.filter(hiddenOk);
-  if(q) out=out.filter(x=>(x.name||"").toString().toLowerCase().includes(q)||(x.path||"").toString().toLowerCase().includes(q));
-  const dirFirst=(a,b)=>{const ad=a.type==="dir"?0:1,bd=b.type==="dir"?0:1;return ad!==bd?ad-bd:0;};
-  const key=filesSortKey.value,dir=filesSortDir.value;
-  out.sort((A,B)=>{
-    const df=dirFirst(A,B);if(df!==0&&key==="type")return df;
-    let cmp=0;
-    if(key==="type"){cmp=dirFirst(A,B);if(cmp!==0)return cmp;cmp=(A.name||"").localeCompare(B.name||"");}
-    else if(key==="name")cmp=(A.name||"").localeCompare(B.name||"");
-    else if(key==="size")cmp=(Number(A.size)||0)-(Number(B.size)||0);
-    else cmp=(A.name||"").localeCompare(B.name||"");
-    return dir==="asc"?cmp:-cmp;
-  });
-  return out;
-});
-
-const visibleListing=computed(()=>filteredSortedListing.value.slice(0,Math.max(30,Number(filesLimit.value||0))));
-const canLoadMore=computed(()=>filteredSortedListing.value.length>visibleListing.value.length);
-function loadMore(){filesLimit.value=Math.min(filteredSortedListing.value.length,Number(filesLimit.value||0)+120);}
-
-function openNode(n){if(!n)return;if(n.type==="dir"){loadDir(n.path);return;}openPreview(n);}
-
-function nodeWebUrl(n) {
-  const info=parseGitHubRepo(pkgRepoUrl.value); if(!info) return "";
-  const ref=selectedRef.value||"main";
-  return n.type==="dir"?githubTreeUrl({owner:info.owner,repo:info.repo,ref,path:n.path}):githubWebUrl({owner:info.owner,repo:info.repo,ref,path:n.path});
-}
-
-function nodeRawUrl(n) {
-  const info=parseGitHubRepo(pkgRepoUrl.value); if(!info) return "";
-  const ref=selectedRef.value||"main";
-  if(n.download_url) return n.download_url;
-  return toAbsRawUrl({owner:info.owner,repo:info.repo,ref,path:n.path});
-}
-
-/* Global search */
-const globalSearchOpen    = ref(false);
-const globalSearchQuery   = ref("");
-const globalSearchLoading = ref(false);
-const globalSearchError   = ref("");
-const globalSearchResults = ref([]);
-
-async function runGlobalSearch() {
-  globalSearchLoading.value=true; globalSearchError.value=""; globalSearchResults.value=[];
-  try {
-    const q=(globalSearchQuery.value||"").toString().trim(); if(!q){globalSearchError.value="Type a query first.";return;}
-    const info=parseGitHubRepo(pkgRepoUrl.value); if(!info) throw new Error("not_github_repo");
-    const ref=selectedRef.value||"main";
-    if(offlineMode.value) throw new Error("offline_mode");
-    const key=cacheKey([info.owner,info.repo,ref,"search",q.toLowerCase()]);
-    const cached=cacheGet(key); if(cached&&Array.isArray(cached)){globalSearchResults.value=cached;return;}
-    const api=ghApiUrl(`search/code?q=${encodeURIComponent(q)}+repo:${encodeURIComponent(info.owner)}/${encodeURIComponent(info.repo)}&per_page=20`);
-    const data=await ghFetch(api,{as:"json"});
-    const out=(Array.isArray(data.items)?data.items:[]).map(x=>({name:x.name||"",path:x.path||"",html_url:x.html_url||""}));
-    cacheSet(key,out,ttlMsDefault("search")); globalSearchResults.value=out;
-  } catch(e) {
-    const msg=(e&&e.message)||"search_failed";
-    globalSearchError.value=msg==="offline_mode"?"Offline mode: search is disabled.":msg==="github_rate_limited"?"Rate limited by GitHub. Please retry later.":msg;
-  } finally { globalSearchLoading.value=false; }
-}
-
-/* Preview */
-async function openPreview(n) {
-  previewOpen.value=true; previewLoading.value=true; previewError.value=""; previewNode.value=n; previewText.value=""; previewHtml.value=""; previewLang.value="txt";
-  try {
-    if(!n||!n.path) throw new Error("missing_path");
-    const info=parseGitHubRepo(pkgRepoUrl.value); if(!info) throw new Error("not_github_repo");
-    const ref=selectedRef.value||"main";
-    if(offlineMode.value) throw new Error("offline_mode");
-    const ext=(n.name||"").split(".").pop().toLowerCase();
-    const langByExt={cpp:"cpp",hpp:"cpp",h:"c",c:"c",cmake:"cmake",json:"json",yml:"yaml",yaml:"yaml",toml:"toml",ini:"ini",md:"md",txt:"txt",js:"js",ts:"ts",html:"html",css:"css",diff:"diff"};
-    previewLang.value=langByExt[ext]||"txt";
-    const key=cacheKey([info.owner,info.repo,ref,"file",n.path]);
-    const cached=cacheGet(key);
-    if(typeof cached==="string"){previewText.value=cached;}
-    else{const txt=await ghFetch(nodeRawUrl(n),{as:"text",accept:"text/plain"});if((txt||"").length<=300000)cacheSet(key,txt,ttlMsDefault("contents"));previewText.value=txt||"";}
-    if(previewLang.value==="md"){const rewritten=rewriteMarkdownLinks(previewText.value,{owner:info.owner,repo:info.repo,ref,baseDir:(n.path||"").split("/").slice(0,-1).join("/")});previewHtml.value=await renderMarkdown(rewritten);}
-  } catch(e) {
-    const msg=(e&&e.message)||"cannot_preview";
-    previewError.value=msg==="offline_mode"?"Offline mode: preview is disabled.":msg==="github_rate_limited"?"Rate limited by GitHub. Please retry later.":msg;
-  } finally { previewLoading.value=false; }
-}
-
-function closePreview(){previewOpen.value=false;previewNode.value=null;previewText.value="";previewHtml.value="";previewError.value="";previewLoading.value=false;}
-function downloadPreviewFile(){const n=previewNode.value;if(!n)return;const url=nodeRawUrl(n);if(url)window.open(url,"_blank","noreferrer");}
-function copyPreviewPath(){const n=previewNode.value;if(!n)return;safeClipboardCopy(n.path||"");}
-function copyPreviewRawUrl(){const n=previewNode.value;if(!n)return;safeClipboardCopy(nodeRawUrl(n)||"");}
-
-/* Docs */
-function extractCppSymbols(text) {
-  const src=(text||"").toString(), out={namespaces:[],types:[],functions:[],macros:[],enums:[]};
-  for(const m of src.matchAll(/^\s*namespace\s+([a-zA-Z_]\w*)\s*\{/gm)) out.namespaces.push(m[1]);
-  for(const m of src.matchAll(/^\s*(?:template\s*<[^>]*>\s*)?(class|struct)\s+([a-zA-Z_]\w*)/gm)) out.types.push(`${m[1]} ${m[2]}`);
-  for(const m of src.matchAll(/^\s*(?:template\s*<[^>]*>\s*)?(enum(?:\s+class)?)\s+([a-zA-Z_]\w*)/gm)) out.enums.push(`${m[1]} ${m[2]}`);
-  for(const m of src.matchAll(/^\s*#\s*define\s+([A-Z_]\w*)/gm)) out.macros.push(m[1]);
-  for(const m of src.matchAll(/^\s*(?:inline\s+)?(?:constexpr\s+)?(?:static\s+)?([a-zA-Z_:\<\>\w\s\*&]+?)\s+([a-zA-Z_]\w*)\s*\(([^\)]*)\)\s*(?:noexcept)?\s*(?:;|\{)/gm)) {
-    const ret=(m[1]||"").trim().replace(/\s+/g," "),name=(m[2]||"").trim(),args=(m[3]||"").trim().replace(/\s+/g," ");
-    if(!name||["if","for","while","switch","catch"].includes(name)) continue;
-    out.functions.push(`${ret} ${name}(${args})`);
+  if (Array.isArray(value)) value.forEach((item) => typeof item === "string" ? add(item) : add(item?.package || item?.name, item?.version || item?.constraint, item?.type || "registry"));
+  else if (typeof value === "object") {
+    if (Array.isArray(value.registry)) value.registry.forEach((item) => typeof item === "string" ? add(item) : add(item?.package || item?.name, item?.version || item?.constraint));
+    if (Array.isArray(value.git)) value.git.forEach((item) => add(item?.repository || item?.url || item?.name, item?.ref || item?.tag, "git"));
+    if (Array.isArray(value.system)) value.system.forEach((item) => add(typeof item === "string" ? item : item?.name, "", "system"));
+    const reserved = new Set(["registry", "git", "system"]);
+    Object.entries(value).filter(([key]) => !reserved.has(key)).forEach(([name, constraint]) => add(name, typeof constraint === "string" ? constraint : constraint?.version || constraint?.constraint));
   }
-  out.namespaces=Array.from(new Set(out.namespaces)).sort();
-  out.types=Array.from(new Set(out.types)).sort();
-  out.enums=Array.from(new Set(out.enums)).sort();
-  out.macros=Array.from(new Set(out.macros)).sort();
-  out.functions=Array.from(new Set(out.functions)).slice(0,400);
-  return out;
+  return result.filter((item, index, items) => items.findIndex((other) => other.name === item.name && other.kind === item.kind) === index);
 }
 
-function buildHeaderCandidateList() {
-  const p=pkg.value||{}, name=(p.name||"").toString().trim(), exp=registryExportsHeaders.value||[];
-  const candidates=[];
-  for(const h of exp){const hp=(h||"").toString().trim().replace(/^\/+/,"");if(!hp)continue;candidates.push(hp);candidates.push(`include/${hp}`);if(name)candidates.push(`include/${name}/${hp}`);}
-  if(name){candidates.push(`include/${name}/${name}.hpp`);candidates.push(`include/${name}.hpp`);candidates.push(`include/${name}/${name}.h`);candidates.push(`include/${name}.h`);}
-  return Array.from(new Set(candidates.map(x=>x.replace(/^\/+/,"")))).slice(0,18);
+function githubRepo(url) {
+  const match = String(url || "").match(/github\.com[/:]([^/]+)\/([^/#]+?)(?:\.git)?(?:$|[/?#])/i);
+  return match ? { owner: match[1], repo: match[2].replace(/\.git$/, "") } : null;
 }
 
-async function fetchHeaderText({ owner, repo, ref, path }) {
-  const p=(path||"").replace(/^\/+/,"");
-  const key=cacheKey([owner,repo,ref,"header",p]);
-  const cached=cacheGet(key); if(typeof cached==="string"&&cached) return cached;
-  const txt=await ghFetch(toAbsRawUrl({owner,repo,ref,path:p}),{as:"text",accept:"text/plain"});
-  if((txt||"").length<=400000) cacheSet(key,txt,ttlMsDefault("header"));
-  return txt;
+function rewriteMarkdown(markdown, repo, ref) {
+  const root = `https://github.com/${repo.owner}/${repo.repo}/blob/${ref}/`;
+  const raw = `https://raw.githubusercontent.com/${repo.owner}/${repo.repo}/${ref}/`;
+  return String(markdown)
+    .replace(/(!\[[^\]]*\]\()(?!https?:|data:|#)([^)]+)(\))/g, `$1${raw}$2$3`)
+    .replace(/(\[[^\]]+\]\()(?!https?:|mailto:|#)([^)]+)(\))/g, `$1${root}$2$3`);
 }
 
-async function loadDocs() {
-  docsLoading.value=true; docsError.value=""; docsHeaderPicked.value=""; docsHeadersTried.value=[]; docsJump.value=""; docsGroupsTab.value="functions";
-  docsCounts.value={namespaces:0,types:0,functions:0,macros:0,enums:0};
-  docsSymbols.value={namespaces:[],types:[],functions:[],macros:[],enums:[]};
+async function fetchSourceContent() {
+  readmeHtml.value = "";
+  manifest.value = null;
+  sourceNotice.value = "";
+  const repo = githubRepo(repository.value);
+  if (!repo) return;
+  readmeLoading.value = true;
+  const rawBase = `https://raw.githubusercontent.com/${repo.owner}/${repo.repo}/${sourceRef.value}`;
   try {
-    const info=parseGitHubRepo(pkgRepoUrl.value); if(!info) throw new Error("missing_repo_url");
-    const ref=selectedRef.value||"main";
-    if(offlineMode.value) throw new Error("offline_mode");
-    const candidates=buildHeaderCandidateList();
-    let tried=[],pickedPath="",headerText="";
-    for(const c of candidates) { try{tried.push(c);headerText=await fetchHeaderText({owner:info.owner,repo:info.repo,ref,path:c});if(headerText){pickedPath=c;break;}}catch{} }
-    if(!headerText) {
-      try {
-        const api=ghApiUrl(`repos/${info.owner}/${info.repo}/contents/include?ref=${encodeURIComponent(ref)}`);
-        const data=await ghFetch(api,{as:"json"});
-        if(Array.isArray(data)){const list=data.map(normalizeContentsItem);const hpp=list.find(x=>x.type==="file"&&/\.h(pp)?$/i.test(x.name||""));if(hpp&&hpp.path){tried.push(hpp.path);headerText=await fetchHeaderText({owner:info.owner,repo:info.repo,ref,path:hpp.path});pickedPath=hpp.path;}}
-      } catch {}
+    for (const filename of ["README.md", "readme.md", "Readme.md"]) {
+      const response = await fetch(`${rawBase}/${filename}`);
+      if (!response.ok) continue;
+      const markdown = rewriteMarkdown(await response.text(), repo, sourceRef.value);
+      const rendered = await marked.parse(markdown);
+      const sectionHeadings = rendered.replaceAll("<h1", "<h2 class=\"readme-heading\"").replaceAll("</h1>", "</h2>");
+      readmeHtml.value = DOMPurify.sanitize(sectionHeadings, { FORBID_TAGS: ["main"] });
+      break;
     }
-    docsHeadersTried.value=tried;
-    if(!headerText){docsError.value=hasRegistryExports.value?"no_exported_header_found":"no_header_detected";return;}
-    docsHeaderPicked.value=pickedPath;
-    const sym=extractCppSymbols(headerText);
-    docsSymbols.value=sym;
-    docsCounts.value={namespaces:sym.namespaces.length,types:sym.types.length,functions:sym.functions.length,macros:sym.macros.length,enums:sym.enums.length};
-  } catch(e) {
-    const msg=(e&&e.message)||"cannot_load_docs";
-    docsError.value=msg==="offline_mode"?"Offline mode: docs scanning is disabled.":msg==="github_rate_limited"?"Rate limited by GitHub. Please retry later.":msg;
-  } finally { docsLoading.value=false; }
+    const response = await fetch(`${rawBase}/${pkg.value?.manifestPath || "vix.json"}`);
+    if (response.ok) manifest.value = await response.json();
+  } catch {
+    sourceNotice.value = "Source documentation is temporarily unavailable. Registry metadata is still shown below.";
+  } finally {
+    readmeLoading.value = false;
+  }
 }
 
-const docsActiveList=computed(()=>{
-  const tab=docsGroupsTab.value, all=docsSymbols.value||{};
-  let list=all[tab]||[];
-  const q=(docsJump.value||"").toString().trim().toLowerCase();
-  if(q) list=list.filter(x=>(x||"").toString().toLowerCase().includes(q));
-  return list.slice(0,300);
-});
-
-/* Meta */
-const metaOpen=ref(false);
-function registryHintExportsJson(){
-  const p=pkg.value||{}, name=(p.name||"").toString().trim(), header=name?`${name}/${name}.hpp`:"my_lib/my_lib.hpp";
-  return JSON.stringify({exports:{headers:[header]}},null,2);
+async function loadPackage() {
+  loading.value = true;
+  error.value = "";
+  try {
+    const { data } = await loadRegistryIndex();
+    const entries = Array.isArray(data?.entries) ? data.entries : [];
+    allPackageIds.value = new Set(entries.map((entry) => `${entry.namespace}/${entry.name}`));
+    pkg.value = entries.find((entry) => `${entry.namespace}/${entry.name}` === id.value) || null;
+    if (!pkg.value) error.value = `The public package ${id.value} was not found.`;
+    else void fetchSourceContent();
+  } catch {
+    error.value = "The public registry could not be loaded.";
+  } finally {
+    loading.value = false;
+  }
 }
 
-/* Lifecycle */
-function askPackage(){if(!id.value)return;worker.postMessage({type:"getPackage",id:id.value});}
-
-function ensureSelectedVersion(){
-  const v=pkgLatest.value||""; if(!selectedVersion.value) selectedVersion.value=v;
-  if(!selectedVersion.value){const first=sortedVersions.value[0];if(first&&first.version)selectedVersion.value=first.version;}
-}
-
-async function refreshTabData(){
-  if(!pkg.value) return;
-  await loadReadme();
-  if(activeTab.value==="files") await loadDir(currentPath.value||"");
-  if(activeTab.value==="docs")  await loadDocs();
-}
-
-onMounted(async()=>{
-  worker.onmessage=async(ev)=>{
-    const msg=ev.data||{};
-    if(msg.type==="loaded"){indexVersion.value=msg.version||"";askPackage();return;}
-    if(msg.type==="packageResult"){
-      loading.value=false; indexVersion.value=msg.version||indexVersion.value;
-      if(!msg.ok){error.value=msg.error||"cannot_load_package";pkg.value=null;return;}
-      pkg.value=msg.pkg||null; error.value="";
-      ensureSelectedVersion();
-      currentPath.value=""; filesFilter.value=""; filesLimit.value=120; previewOpen.value=false; globalSearchOpen.value=false; metaOpen.value=false;
-      ghNotice.value=offlineMode.value?"Offline mode enabled.":"";
-      await refreshTabData(); return;
-    }
-    if(msg.type==="error"){loading.value=false;error.value=msg.error||"worker_error";}
-  };
-  try { const {data}=await loadRegistryIndex(); worker.postMessage({type:"load",data}); }
-  catch { loading.value=false; error.value="cannot_load_registry"; }
-});
-
-onBeforeUnmount(()=>{ worker.terminate(); });
-
-watch(()=>id.value,()=>{
-  loading.value=true; error.value=""; pkg.value=null;
-  readmeHtml.value=""; readmeError.value=""; readmeToc.value=[]; readmeWarn.value="";
-  repoListing.value=[]; currentPath.value=""; filesError.value="";
-  docsError.value=""; docsHeaderPicked.value=""; docsHeadersTried.value=[]; docsSymbols.value={namespaces:[],types:[],functions:[],macros:[],enums:[]};
-  askPackage();
-});
-
-watch(()=>activeTab.value,async()=>{
-  if(!pkg.value) return;
-  if(activeTab.value==="overview") await loadReadme();
-  if(activeTab.value==="files")    await loadDir(currentPath.value||"");
-  if(activeTab.value==="docs")     await loadDocs();
-});
-
-watch(()=>selectedVersion.value,async()=>{
-  if(!pkg.value) return;
-  await loadReadme();
-  if(activeTab.value==="files") await loadDir(currentPath.value||"");
-  if(activeTab.value==="docs")  await loadDocs();
-});
-
-watch(()=>route.query.tab,t=>{const v=(t||"overview").toString();if(v&&v!==activeTab.value)activeTab.value=v;});
+onMounted(loadPackage);
+watch(() => [route.params.namespace, route.params.name], loadPackage);
 </script>
 
 <template>
-  <section class="page">
-    <div class="container">
-      <div class="state" v-if="loading">
-        <span class="spinner"></span>
-        Loading package...
+  <div class="package-page registry-container">
+    <RegistryState v-if="loading" kind="loading" title="Loading package" message="Reading public registry metadata." />
+    <RegistryState v-else-if="error" kind="error" title="Package unavailable" :message="error"><RouterLink class="registry-button registry-button--secondary" to="/browse">Browse packages</RouterLink></RegistryState>
+
+    <template v-else-if="pkg">
+      <header class="package-hero">
+        <div class="package-hero__path"><RouterLink :to="`/ns/${pkg.namespace}`">{{ pkg.namespace }}</RouterLink><span>/</span><strong>{{ pkg.name }}</strong></div>
+        <div class="package-hero__title"><h1>{{ pkg.namespace }}/{{ pkg.name }}</h1><span>Public package</span></div>
+        <p>{{ pkg.description || "No description has been provided for this package." }}</p>
+        <div class="package-hero__meta"><strong v-if="latest">v{{ latest }}</strong><span v-if="pkg.license">{{ pkg.license }}</span><span v-if="pkg.type">{{ pkg.type }}</span><span v-if="updatedAt">Updated {{ updatedAt }}</span></div>
+      </header>
+
+      <nav class="package-nav" aria-label="Package sections">
+        <a href="#package-overview">Overview</a><a v-if="readmeHtml || readmeLoading" href="#readme">README</a><a href="#versions">Versions</a><a href="#dependencies">Dependencies</a><a href="#manifest">Manifest</a>
+      </nav>
+
+      <div class="package-layout">
+        <div class="package-main">
+          <section v-if="readmeHtml || readmeLoading" id="readme" class="package-section">
+            <div class="section-heading"><div><span>Source documentation</span><h2>README</h2></div><a v-if="repository" :href="repository" target="_blank" rel="noreferrer">View source</a></div>
+            <RegistryState v-if="readmeLoading" kind="loading" title="Loading README" message="Fetching the release documentation." />
+            <article v-else class="markdown-body" v-html="readmeHtml"></article>
+          </section>
+
+          <section id="versions" class="package-section">
+            <div class="section-heading"><div><span>Published releases</span><h2>Versions</h2></div><span>{{ sortedVersions.length }} total</span></div>
+            <div v-if="sortedVersions.length" class="version-list">
+              <article v-for="version in sortedVersions" :key="version.version" class="version-row">
+                <div><div class="version-row__number"><strong>v{{ version.version }}</strong><span v-if="version.version === latest">Latest</span><span v-if="version.version.includes('-')">Prerelease</span></div><small v-if="version.tag">Tag {{ version.tag }}</small><small v-if="version.commit">Commit {{ version.commit.slice(0, 10) }}</small><small v-if="version.publishedAt">{{ formatDate(version.publishedAt) }}</small><small v-if="version.checksum || version.hash">Checksum {{ version.checksum || version.hash }}</small></div>
+                <RegistryCopyBlock :value="versionCommand(version.version)" label="Install this version" />
+              </article>
+            </div>
+            <RegistryState v-else kind="empty" title="No published versions" message="This package has no version metadata yet." />
+          </section>
+
+          <section id="dependencies" class="package-section">
+            <div class="section-heading"><div><span>Package manifest</span><h2>Dependencies</h2></div></div>
+            <div v-if="dependencies.length" class="dependency-list"><div v-for="dependency in dependencies" :key="`${dependency.kind}:${dependency.name}`"><RouterLink v-if="dependency.kind === 'registry' && dependency.available" :to="`/pkg/${dependency.name}`">{{ dependency.name }}</RouterLink><strong v-else>{{ dependency.name }}</strong><span>{{ dependency.constraint || dependency.kind }}</span></div></div>
+            <p v-else class="empty-line">No dependencies.</p>
+          </section>
+
+          <section id="manifest" class="package-section">
+            <div class="section-heading"><div><span>{{ manifest ? "Published source" : "Registry representation" }}</span><h2>{{ manifest ? "vix.json" : "Registry metadata" }}</h2></div></div>
+            <p v-if="!manifest" class="section-note">The source manifest is unavailable, so this is a structured view of metadata present in the public registry index.</p>
+            <RegistryCopyBlock :value="manifestText" :label="manifest ? 'vix.json' : 'Registry metadata'" language="json" />
+          </section>
+        </div>
+
+        <aside class="package-sidebar" aria-label="Package installation and links">
+          <section><span class="sidebar-label">Install</span><RegistryCopyBlock :value="installCommand" label="Vix CLI" /></section>
+          <section id="package-overview" class="sidebar-overview">
+            <span class="sidebar-label">Package details</span>
+            <h2>Overview</h2>
+            <dl><div v-for="([label, value]) in overviewItems" :key="label"><dt>{{ label }}</dt><dd>{{ value }}</dd></div><div><dt>Namespace</dt><dd><RouterLink :to="`/ns/${pkg.namespace}`">{{ pkg.namespace }}</RouterLink></dd></div></dl>
+            <div v-if="maintainers.length" class="sidebar-maintainers"><span>Published by</span><strong v-for="maintainer in maintainers" :key="maintainer.github || maintainer.name">{{ maintainer.name || maintainer.github }}</strong></div>
+            <p v-if="sourceNotice" class="source-notice">{{ sourceNotice }}</p>
+          </section>
+          <div class="sidebar-links"><a v-if="repository" :href="repository" target="_blank" rel="noreferrer">Source repository <span aria-hidden="true">↗</span></a><a v-if="pkg.documentation" :href="pkg.documentation" target="_blank" rel="noreferrer">Documentation <span aria-hidden="true">↗</span></a><a v-if="pkg.homepage && pkg.homepage !== repository" :href="pkg.homepage" target="_blank" rel="noreferrer">Homepage <span aria-hidden="true">↗</span></a></div>
+        </aside>
       </div>
 
-      <div class="state error" v-else-if="error">
-        <div class="err-title">Something went wrong</div>
-        <div class="err-sub">Error: {{ error }}</div>
-      </div>
-
-      <template v-else-if="pkg">
-        <PkgShowHeader
-          :id="id" :pkgDisplayName="pkgDisplayName" :pkg="pkg" :pkgRepoUrl="pkgRepoUrl"
-          :indexVersion="indexVersion" :selectedCommit="selectedCommit" :selectedTag="selectedTag"
-          :shortSha="shortSha" :offlineMode="offlineMode" :ghNotice="ghNotice"
-          :overviewBadges="overviewBadges" :isDev="isDev" :hasDevToken="hasDevToken"
-          :tokenPolicyLabel="tokenPolicyLabel" :sortedVersions="sortedVersions"
-          :selectedVersion="selectedVersion" :metaOpen="metaOpen" :activeTab="activeTab"
-          @update:selectedVersion="selectedVersion = $event"
-          @update:metaOpen="metaOpen = $event"
-          @setTab="setTab" @reloadTab="reloadTab"
-          :registryHintExportsJson="registryHintExportsJson"
-          :namespace="pkg?.namespace"
-        />
-
-        <section class="panel">
-          <PkgOverviewTab
-            v-if="activeTab === 'overview'" :key="tabKey.overview"
-            :pkg="pkg" :installSnippet="installSnippet" :includeSnippet="includeSnippet"
-            :safeClipboardCopy="safeClipboardCopy" :readmeLoading="readmeLoading"
-            :readmeError="readmeError" :readmeHtml="readmeHtml" :readmeToc="readmeToc"
-            :readmeMeta="readmeMeta" :readmeWarn="readmeWarn"
-          />
-
-          <PkgDocsTab
-            v-else-if="activeTab === 'docs'" :key="tabKey.docs"
-            :id="id" :docsLoading="docsLoading" :docsError="docsError"
-            :hasRegistryExports="hasRegistryExports" :docsHeaderPicked="docsHeaderPicked"
-            :docsHeadersTried="docsHeadersTried" :docsCounts="docsCounts"
-            :docsActiveList="docsActiveList" :docsJump="docsJump" :docsGroupsTab="docsGroupsTab"
-            :nodeWebUrl="nodeWebUrl"
-            @update:docsJump="docsJump = $event"
-            @update:docsGroupsTab="docsGroupsTab = $event"
-          />
-
-          <PkgFilesTab
-            v-else-if="activeTab === 'files'" :key="tabKey.files"
-            :pkgRepoUrl="pkgRepoUrl" :filesLoading="filesLoading" :filesError="filesError"
-            :currentPath="currentPath" :pathStack="pathStack" :goRoot="goRoot" :goCrumb="goCrumb" :goUp="goUp"
-            :globalSearchOpen="globalSearchOpen" :globalSearchQuery="globalSearchQuery"
-            :globalSearchLoading="globalSearchLoading" :globalSearchError="globalSearchError"
-            :globalSearchResults="globalSearchResults" :runGlobalSearch="runGlobalSearch"
-            :filesFilter="filesFilter" :filesShowHidden="filesShowHidden"
-            :filesSortKey="filesSortKey" :filesSortDir="filesSortDir" :toggleSort="toggleSort"
-            :visibleListing="visibleListing" :canLoadMore="canLoadMore" :loadMore="loadMore"
-            :filteredSortedListingLen="filteredSortedListing.length"
-            :openNode="openNode" :niceSize="niceSize" :nodeWebUrl="nodeWebUrl"
-            :previewOpen="previewOpen" :previewLoading="previewLoading" :previewError="previewError"
-            :previewNode="previewNode" :previewText="previewText" :previewHtml="previewHtml"
-            :previewLang="previewLang" :copyPreviewPath="copyPreviewPath"
-            :copyPreviewRawUrl="copyPreviewRawUrl" :downloadPreviewFile="downloadPreviewFile"
-            :closePreview="closePreview"
-            @update:globalSearchOpen="globalSearchOpen = $event"
-            @update:globalSearchQuery="globalSearchQuery = $event"
-            @update:filesFilter="filesFilter = $event"
-            @update:filesShowHidden="filesShowHidden = $event"
-          />
-
-          <PkgVersionsTab
-            v-else-if="activeTab === 'versions'" :key="tabKey.versions"
-            :sortedVersions="sortedVersions" :pkgLatest="pkgLatest"
-            :shortSha="shortSha" :selectedVersion="selectedVersion"
-            @update:selectedVersion="selectedVersion = $event"
-          />
-        </section>
-      </template>
-
-      <div class="state" v-else>Not found.</div>
-    </div>
-  </section>
+      <PrivatePackagesNotice compact />
+    </template>
+  </div>
 </template>
 
 <style scoped>
-.page { min-height: 100vh; background: #0e0e10; color: rgba(255,255,255,.92); font-family: system-ui,-apple-system,sans-serif; -webkit-font-smoothing: antialiased; }
-.container { max-width: 1280px; margin: 0 auto; }
-.panel { background: transparent; }
-.state { display: flex; align-items: center; gap: 12px; padding: 32px 24px; color: rgba(255,255,255,.65); font-size: 14px; }
-.state.error { flex-direction: column; align-items: flex-start; gap: 6px; }
-.err-title { font-size: 16px; font-weight: 700; color: rgba(255,255,255,.88); }
-.err-sub   { font-size: 13px; color: rgba(248,113,113,.85); }
-.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.15); border-top-color: #22c55e; animation: spin .8s linear infinite; flex-shrink: 0; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.package-page { padding-top: 44px; padding-bottom: 72px; }
+.package-hero { max-width: 920px; padding-bottom: 30px; }
+.package-hero__path { display: flex; gap: 5px; margin-bottom: 15px; color: var(--text-muted); font: .74rem var(--font-mono); }
+.package-hero__path a { color: var(--green-soft); }
+.package-hero__title { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.package-hero h1 { min-width: 0; color: var(--text); font: 700 clamp(1.65rem, 4vw, 2.7rem)/1.1 var(--font-display); letter-spacing: 0; overflow-wrap: anywhere; }
+.package-hero__title > span, .version-row__number span { padding: 4px 7px; border: 1px solid var(--green-line); border-radius: var(--radius-sm); color: var(--green-soft); background: var(--green-wash); font: .63rem var(--font-mono); text-transform: uppercase; }
+.package-hero > p { max-width: 760px; margin-top: 15px; color: var(--text-soft); font-size: .98rem; line-height: 1.65; }
+.package-hero__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; color: var(--text-muted); font: .7rem var(--font-mono); }
+.package-hero__meta strong { color: var(--green-bright); }
+.package-nav { position: sticky; top: 64px; z-index: 4; display: flex; gap: 22px; overflow-x: auto; margin-bottom: 34px; padding: 13px 0; border-block: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(12px); }
+.package-nav a { flex: 0 0 auto; color: var(--text-muted); font-size: .75rem; }
+.package-nav a:hover { color: var(--green-soft); }
+.package-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 48px; align-items: start; }
+.package-main { min-width: 0; }
+.package-section { min-width: 0; padding: 0 0 52px; scroll-margin-top: 135px; }
+.section-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.section-heading span, .sidebar-label { color: var(--green-soft); font: .64rem var(--font-mono); text-transform: uppercase; }
+.section-heading h2 { margin-top: 4px; color: var(--text); font: 650 1.18rem var(--font-display); }
+.section-heading > a, .section-heading > span:last-child { color: var(--text-muted); font: .7rem var(--font-mono); }
+.source-notice, .section-note, .empty-line { color: var(--text-muted); font-size: .78rem; line-height: 1.55; }
+.source-notice { margin-top: 20px; }
+.section-note { margin: -4px 0 14px; }
+.version-list, .dependency-list { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.version-row { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(260px, 1fr); gap: 28px; align-items: center; padding: 16px; border-bottom: 1px solid var(--line); }
+.version-row:last-child, .dependency-list > div:last-child { border-bottom: 0; }
+.version-row__number { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.version-row__number strong { font: 650 .83rem var(--font-mono); }
+.version-row small { display: block; margin-top: 7px; color: var(--text-muted); font: .65rem var(--font-mono); overflow-wrap: anywhere; }
+.version-row :deep(.copy-block__bar) { display: none; }
+.version-row :deep(pre) { padding: 11px 13px; font-size: .68rem; }
+.dependency-list > div { display: flex; justify-content: space-between; gap: 16px; padding: 13px 16px; border-bottom: 1px solid var(--line); font: .75rem var(--font-mono); }
+.dependency-list a { color: var(--green-soft); }
+.dependency-list span { color: var(--text-muted); overflow-wrap: anywhere; }
+.package-sidebar { position: sticky; top: 126px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg-panel); }
+.package-sidebar > section { padding: 18px; border-bottom: 1px solid var(--line); }
+.sidebar-label { display: block; margin-bottom: 10px; }
+.sidebar-overview { scroll-margin-top: 135px; }
+.sidebar-overview h2 { margin-bottom: 11px; color: var(--text); font: 650 1rem var(--font-display); }
+.package-sidebar dl { margin-inline: -18px; border-top: 1px solid var(--line); }
+.package-sidebar dl > div { display: flex; justify-content: space-between; gap: 14px; padding: 11px 18px; border-bottom: 1px solid var(--line); font-size: .72rem; }
+.package-sidebar dt { color: var(--text-muted); }
+.package-sidebar dd { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+.package-sidebar dd a, .sidebar-links a { color: var(--green-soft); }
+.sidebar-maintainers { display: grid; gap: 7px; margin-top: 15px; }
+.sidebar-maintainers span { color: var(--text-muted); font: .65rem var(--font-mono); }
+.sidebar-maintainers strong { color: var(--text-soft); font-size: .74rem; font-weight: 600; }
+.sidebar-links { display: grid; gap: 11px; padding: 17px 18px; font-size: .72rem; }
+.markdown-body { min-width: 0; color: var(--text-soft); font-size: .88rem; line-height: 1.72; overflow-wrap: anywhere; }
+.markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3) { margin: 1.8em 0 .65em; color: var(--text); font-family: var(--font-display); letter-spacing: 0; }
+.markdown-body :deep(h1) { font-size: 1.65rem; }.markdown-body :deep(h2) { padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: 1.25rem; }.markdown-body :deep(h3) { font-size: 1rem; }
+.markdown-body :deep(p), .markdown-body :deep(ul), .markdown-body :deep(ol), .markdown-body :deep(table), .markdown-body :deep(blockquote), .markdown-body :deep(pre) { margin: 0 0 1.2em; }
+.markdown-body :deep(ul), .markdown-body :deep(ol) { padding-left: 24px; }
+.markdown-body :deep(a) { color: var(--green-soft); text-decoration: underline; text-underline-offset: 3px; }
+.markdown-body :deep(img) { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
+.markdown-body :deep(pre) { max-width: 100%; padding: 16px; overflow-x: auto; border: 1px solid var(--line-ink); border-radius: var(--radius-md); background: var(--bg-ink); color: var(--text); }
+.markdown-body :deep(code) { padding: 2px 5px; border-radius: 3px; background: var(--bg-ink); font: .82em var(--font-mono); }
+.markdown-body :deep(pre code) { padding: 0; background: transparent; }
+.markdown-body :deep(blockquote) { padding-left: 16px; border-left: 3px solid var(--green-line); color: var(--text-muted); }
+.markdown-body :deep(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.markdown-body :deep(th), .markdown-body :deep(td) { padding: 8px 10px; border: 1px solid var(--line); text-align: left; }
+@media (max-width: 980px) { .package-layout { grid-template-columns: minmax(0, 1fr); gap: 0; } .package-sidebar { position: static; grid-row: 1; margin-bottom: 42px; } }
+@media (max-width: 680px) { .package-page { padding-top: 28px; } .package-nav { top: 58px; gap: 17px; } .version-row { grid-template-columns: 1fr; gap: 13px; } }
+@media (max-width: 420px) { .section-heading { align-items: start; flex-direction: column; gap: 7px; } }
 </style>

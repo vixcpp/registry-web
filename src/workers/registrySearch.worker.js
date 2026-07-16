@@ -102,6 +102,8 @@ function buildHit(e, score) {
     repo: getRepoUrl(e),
     latest: latestVersion(e),
     license: e?.license || "MIT",
+    type: e?.type || "",
+    versionsCount: Object.keys(e?.versions || {}).length,
     score: Number(score) || 0,
     updatedAt: getUpdatedAt(e),
     createdAt: e?.createdAt || "",
