@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import RegistryPackageCard from "@/components/RegistryPackageCard.vue";
+import RegistryHeroGraph from "@/components/registry/RegistryHeroGraph.vue";
 import { loadRegistryIndex } from "@/lib/loadRegistryIndex";
 import { useBodyClass } from "@/lib/useBodyClass";
 
@@ -154,29 +155,32 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
   <div class="registry-home">
     <div>
       <section class="hero">
-        <div class="hero__inner">
-          <div class="hero__eyebrow"><span /> Vix Registry</div>
-          <h1>The package registry<br />for modern C++.</h1>
-          <p class="hero__lead">Discover, publish, version, and install reusable C++ packages with Vix.</p>
+        <div class="hero__layout">
+          <div class="hero__inner">
+            <div class="hero__eyebrow"><span /> Vix Registry</div>
+            <h1>The package registry<br />for modern C++.</h1>
+            <p class="hero__lead">Discover, publish, version, and install reusable C++ packages with Vix.</p>
 
-          <form class="hero-search" role="search" @submit.prevent="submitSearch">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.7" stroke="currentColor" stroke-width="1.7" /><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
-            <label class="sr-only" for="registry-home-search">Search packages</label>
-            <input id="registry-home-search" ref="searchInput" v-model="query" type="search" placeholder="Search by package, namespace, or capability" autocomplete="off" spellcheck="false" />
-            <kbd aria-hidden="true">/</kbd>
-            <button type="submit">Search</button>
-          </form>
+            <form class="hero-search" role="search" @submit.prevent="submitSearch">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.7" stroke="currentColor" stroke-width="1.7" /><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
+              <label class="sr-only" for="registry-home-search">Search packages</label>
+              <input id="registry-home-search" ref="searchInput" v-model="query" type="search" placeholder="Search by package, namespace, or capability" autocomplete="off" spellcheck="false" />
+              <kbd aria-hidden="true">/</kbd>
+              <button type="submit">Search</button>
+            </form>
 
-          <div class="hero__actions">
-            <RouterLink class="button button--primary" to="/browse">Explore packages <span aria-hidden="true">→</span></RouterLink>
-            <RouterLink class="button button--secondary" to="/publish">Publish a package</RouterLink>
+            <div class="hero__actions">
+              <RouterLink class="button button--primary" to="/browse">Explore packages <span aria-hidden="true">→</span></RouterLink>
+              <RouterLink class="button button--secondary" to="/publish">Publish a package</RouterLink>
+            </div>
+
+            <div class="hero__facts" aria-label="Registry summary">
+              <span><strong>{{ loading ? "—" : packageCount }}</strong> packages</span>
+              <span><strong>{{ loading ? "—" : namespaceCount }}</strong> namespaces</span>
+              <span>Open registry index</span>
+            </div>
           </div>
-
-          <div class="hero__facts" aria-label="Registry summary">
-            <span><strong>{{ loading ? "—" : packageCount }}</strong> packages</span>
-            <span><strong>{{ loading ? "—" : namespaceCount }}</strong> namespaces</span>
-            <span>Open registry index</span>
-          </div>
+          <RegistryHeroGraph class="hero__visual" />
         </div>
       </section>
 
@@ -284,14 +288,16 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; }
 .section-band { padding: clamp(72px, 8vw, 108px) 0; border-top: 1px solid var(--line); }
 .eyebrow { display: inline-flex; color: var(--green-soft); font-size: .7rem; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
-.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--bg); }
-.hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .32; background-image: linear-gradient(var(--line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft) 1px, transparent 1px); background-size: 48px 48px; mask-image: linear-gradient(to bottom, black, transparent 88%); }
-.hero__inner { position: relative; width: min(100% - 2rem, 900px); margin-inline: auto; padding: clamp(56px, 7vw, 80px) 0 40px; text-align: center; }
+.hero { position: relative; min-height: 620px; padding: 0; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--bg); }
+.hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .22; background-image: linear-gradient(var(--line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft) 1px, transparent 1px); background-size: 52px 52px; mask-image: linear-gradient(to bottom, black, transparent 88%); }
+.hero__layout { position: relative; width: min(100% - 2rem, var(--container-wide)); min-height: 620px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr); align-items: center; gap: clamp(24px, 4vw, 64px); margin-inline: auto; }
+.hero__inner { min-width: 0; padding: 64px 0 58px; text-align: left; }
+.hero__visual { align-self: center; }
 .hero__eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--green-soft); font-family: var(--font-mono); font-size: .76rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 .hero__eyebrow span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px var(--green-faint); }
-.hero h1 { margin-top: 18px; font-size: clamp(3rem, 7vw, 5.6rem); line-height: .98; letter-spacing: -.045em; }
-.hero__lead { max-width: 640px; margin: 20px auto 0; color: var(--text-soft); font-size: clamp(1rem, 1.6vw, 1.18rem); line-height: 1.65; }
-.hero-search { max-width: 760px; min-height: 62px; margin: 30px auto 0; display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 12px; padding: 7px 7px 7px 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg-panel); box-shadow: 0 20px 60px rgba(0,0,0,.34), 0 0 0 1px rgba(34,197,94,.03); transition: border-color var(--speed), box-shadow var(--speed); }
+.hero h1 { max-width: 720px; margin-top: 18px; font-size: clamp(3.1rem, 4.7vw, 4.25rem); line-height: .98; letter-spacing: -.045em; }
+.hero__lead { max-width: 640px; margin: 20px 0 0; color: var(--text-soft); font-size: clamp(1rem, 1.6vw, 1.18rem); line-height: 1.65; }
+.hero-search { width: 100%; max-width: 760px; min-height: 62px; margin: 30px 0 0; display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 12px; padding: 7px 7px 7px 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg-panel); box-shadow: 0 20px 60px rgba(0,0,0,.34), 0 0 0 1px rgba(34,197,94,.03); transition: border-color var(--speed), box-shadow var(--speed); }
 .hero-search:focus-within { border-color: var(--green-line); box-shadow: 0 20px 60px rgba(0,0,0,.38), 0 0 0 3px var(--green-faint); }
 .hero-search svg { width: 21px; height: 21px; color: var(--text-muted); }
 .hero-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: .98rem; }
@@ -299,14 +305,14 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
 .hero-search kbd { padding: 3px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-muted); font: .72rem var(--font-mono); }
 .hero-search button { align-self: stretch; min-width: 88px; border: 0; border-radius: var(--radius-md); background: var(--green); color: #07150c; font-weight: 700; cursor: pointer; }
 .hero-search button:hover { background: var(--green-soft); }
-.hero__actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.hero__actions { display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 0 17px; border: 1px solid transparent; border-radius: var(--radius-md); font-size: .88rem; font-weight: 650; transition: transform var(--speed), background var(--speed), border-color var(--speed), color var(--speed); }
 .button:hover { transform: translateY(-1px); }
 .button--primary { background: var(--green); color: #07150c; box-shadow: var(--shadow-green); }
 .button--primary:hover { background: var(--green-soft); color: #07150c; }
 .button--secondary { border-color: var(--line-strong); background: var(--bg-panel); color: var(--text); }
 .button--secondary:hover { border-color: var(--green-line); color: var(--green-soft); }
-.hero__facts { margin-top: 30px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px 28px; color: var(--text-muted); font: .74rem var(--font-mono); }
+.hero__facts { margin-top: 30px; display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 10px 28px; color: var(--text-muted); font: .74rem var(--font-mono); }
 .hero__facts span + span::before { content: ""; display: inline-block; width: 3px; height: 3px; margin: 0 20px 2px 0; border-radius: 50%; background: var(--green); }
 .hero__facts strong { color: var(--text-soft); font-weight: 650; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 36px; }
@@ -361,7 +367,8 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
 .registry-footer__bottom { display: flex; justify-content: space-between; gap: 20px; padding-top: 17px; padding-bottom: 17px; border-top: 1px solid var(--line); color: var(--text-muted); font: .7rem var(--font-mono); }
 
 @media (max-width: 1050px) { .package-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .package-columns { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .hero { min-height: 0; } .hero__layout { min-height: 0; grid-template-columns: 1fr; gap: 4px; padding: 24px 0 52px; } .hero__visual { order: -1; width: min(100%, 400px); margin-inline: auto; } .hero__inner { width: 100%; padding: 0; text-align: center; } .hero__eyebrow, .hero__actions, .hero__facts { justify-content: center; } .hero h1, .hero__lead, .hero-search { margin-right: auto; margin-left: auto; } }
 @media (max-width: 860px) { .why__layout, .workflow__layout { grid-template-columns: 1fr; } .why__intro { position: static; } .workflow__layout { gap: 36px; } .publish-band__inner { align-items: start; flex-direction: column; } }
-@media (max-width: 640px) { .content, .hero__inner { width: min(100% - 1.25rem, var(--container-wide)); } .hero__inner { padding-top: 52px; padding-bottom: 42px; } .hero h1 { font-size: clamp(2.55rem, 13vw, 4rem); } .hero__lead { margin-top: 20px; } .hero-search { grid-template-columns: auto minmax(0,1fr) auto; min-height: 58px; margin-top: 30px; padding-right: 7px; } .hero-search kbd { display: none; } .hero-search button { min-width: 52px; font-size: 0; } .hero-search button::after { content: "→"; font-size: 1rem; } .hero__facts { align-items: center; flex-direction: column; gap: 7px; margin-top: 30px; } .hero__facts span + span::before { display: none; } .section-heading { align-items: start; flex-direction: column; } .package-grid, .package-stack { grid-template-columns: 1fr; } .package-card { min-height: 175px; } .package-group__heading { flex-direction: column; gap: 2px; } .terminal pre { padding: 18px; font-size: .74rem; } .registry-footer__inner, .registry-footer__bottom { flex-direction: column; } }
+@media (max-width: 640px) { .content { width: min(100% - 1.25rem, var(--container-wide)); } .hero__layout { width: min(100% - 1.25rem, var(--container-wide)); padding-top: 14px; padding-bottom: 42px; } .hero__visual { width: min(100%, 280px); margin-bottom: -8px; } .hero h1 { font-size: clamp(2.55rem, 13vw, 4rem); } .hero__lead { margin-top: 20px; } .hero-search { grid-template-columns: auto minmax(0,1fr) auto; min-height: 58px; margin-top: 26px; padding-right: 7px; } .hero-search kbd { display: none; } .hero-search button { min-width: 52px; font-size: 0; } .hero-search button::after { content: "→"; font-size: 1rem; } .hero__facts { align-items: center; flex-direction: column; gap: 7px; margin-top: 24px; } .hero__facts span + span::before { display: none; } .section-heading { align-items: start; flex-direction: column; } .package-grid, .package-stack { grid-template-columns: 1fr; } .package-card { min-height: 175px; } .package-group__heading { flex-direction: column; gap: 2px; } .terminal pre { padding: 18px; font-size: .74rem; } .registry-footer__inner, .registry-footer__bottom { flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 1.4s; } }
 </style>
